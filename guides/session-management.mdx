@@ -1,0 +1,508 @@
+---
+title: 'Session Management'
+description: 'Save and restore authentication sessions to avoid repeated QR scanning and maintain persistent WhatsApp connections'
+---
+
+## Overview
+
+Session management is critical in Baileys to avoid re-authenticating every time your application restarts. Proper session handling ensures:
+
+- No repeated QR code scanning
+- Persistent authentication across restarts
+- Proper message encryption/decryption
+- Reliable message delivery
+
+<Warning>
+Failing to properly save session state will cause message delivery failures and force users to re-authenticate frequently.
+</Warning>
+
+## Authentication State
+
+Baileys authentication state consists of two parts:
+
+1. **Credentials (`creds`)** - Your device's identity and encryption keys
+2. **Keys (`keys`)** - Signal protocol keys for message encryption
+
+## Using Multi-File Auth State
+
+Baileys provides `useMultiFileAuthState` as the recommended way to manage sessions.
+
+### Basic Usage
+
+```typescript
+import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys'
+
+const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
+
+const sock = makeWASocket({ 
+    auth: state 
+})
+
+// Save credentials whenever they update
+sock.ev.on('creds.update', saveCreds)
+```
+
+### How It Works
+
+<Steps>
+
+<Step title="Load Existing State">
+`useMultiFileAuthState` loads credentials and keys from the specified folder.
+</Step>
+
+<Step title="Create Socket">
+Pass the loaded `state` to `makeWASocket` via the `auth` option.
+</Step>
+
+<Step title="Listen for Updates">
+Listen to `creds.update` event to know when credentials change.
+</Step>
+
+<Step title="Save Changes">
+Call `saveCreds()` to persist the updated credentials.
+</Step>
+
+</Steps>
+
+### File Structure
+
+The auth state is stored in multiple files:
+
+```
+auth_info_baileys/
+├── creds.json          # Main credentials
+└── app-state-sync-key-*.json  # Signal protocol keys
+```
+
+## Complete Session Management Example
+
+```typescript
+import makeWASocket, { 
+    DisconnectReason,
+    useMultiFileAuthState,
+    makeCacheableSignalKeyStore
+} from '@whiskeysockets/baileys'
+import { Boom } from '@hapi/boom'
+
+async function connectToWhatsApp() {
+    // Load or create auth state
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
+    
+    const sock = makeWASocket({
+        auth: {
+            creds: state.creds,
+            // Cacheable store makes encryption faster
+            keys: makeCacheableSignalKeyStore(state.keys, logger),
+        },
+        printQRInTerminal: true
+    })
+    
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update
+        
+        if (connection === 'close') {
+            const shouldReconnect = 
+                (lastDisconnect?.error as Boom)?.output?.statusCode !== 
+                DisconnectReason.loggedOut
+            
+            if (shouldReconnect) {
+                connectToWhatsApp() // Reconnect with saved state
+            } else {
+                console.log('Logged out - session cleared')
+            }
+        } else if (connection === 'open') {
+            console.log('Connected with saved session')
+        }
+    })
+    
+    // CRITICAL: Save credentials when updated
+    sock.ev.on('creds.update', saveCreds)
+}
+
+connectToWhatsApp()
+```
+
+## Why Credentials Update
+
+Credentials update in several scenarios:
+
+<Tabs>
+  <Tab title="New Messages">
+    When messages are received or sent, Signal protocol sessions update, requiring key changes.
+  </Tab>
+  
+  <Tab title="First Connection">
+    On initial authentication, credentials are created and must be saved.
+  </Tab>
+  
+  <Tab title="Key Rotation">
+    WhatsApp periodically rotates encryption keys for security.
+  </Tab>
+  
+  <Tab title="Device Changes">
+    When devices are linked/unlinked or settings change.
+  </Tab>
+</Tabs>
+
+<Warning>
+The `creds.update` event may fire frequently (even on every message). Always save immediately to prevent issues.
+</Warning>
+
+## Cacheable Signal Key Store
+
+For better performance, use `makeCacheableSignalKeyStore` to cache encryption keys:
+
+```typescript
+import { makeCacheableSignalKeyStore } from '@whiskeysockets/baileys'
+
+const { state, saveCreds } = await useMultiFileAuthState('auth_info')
+
+const sock = makeWASocket({
+    auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
+    }
+})
+```
+
+**Benefits:**
+- Faster message encryption/decryption
+- Reduced disk I/O
+- Better performance for high-volume bots
+
+## Custom Auth State Implementation
+
+`useMultiFileAuthState` is great for development, but production systems should use databases.
+
+### Database Example (Conceptual)
+
+```typescript
+import { AuthenticationState, SignalDataTypeMap } from '@whiskeysockets/baileys'
+
+function useDatabaseAuthState(userId: string): AuthenticationState {
+    return {
+        creds: await loadCredsFromDB(userId),
+        keys: {
+            get: async (type, ids) => {
+                const data = {}
+                for (const id of ids) {
+                    data[id] = await db.getKey(type, id)
+                }
+                return data
+            },
+            set: async (data) => {
+                for (const [type, entries] of Object.entries(data)) {
+                    for (const [id, value] of Object.entries(entries)) {
+                        if (value) {
+                            await db.setKey(type, id, value)
+                        } else {
+                            await db.deleteKey(type, id)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Usage
+const authState = await useDatabaseAuthState('user123')
+const sock = makeWASocket({ auth: authState })
+
+sock.ev.on('creds.update', async () => {
+    await saveCredsToDB(authState.creds)
+})
+```
+
+### MongoDB Example
+
+```typescript
+import { MongoClient } from 'mongodb'
+import { BufferJSON, initAuthCreds } from '@whiskeysockets/baileys'
+
+async function useMongoAuthState(collection: Collection) {
+    const writeData = async (id: string, data: any) => {
+        await collection.updateOne(
+            { _id: id },
+            { $set: { data: JSON.stringify(data, BufferJSON.replacer) } },
+            { upsert: true }
+        )
+    }
+    
+    const readData = async (id: string) => {
+        const doc = await collection.findOne({ _id: id })
+        return doc?.data ? JSON.parse(doc.data, BufferJSON.reviver) : null
+    }
+    
+    const removeData = async (id: string) => {
+        await collection.deleteOne({ _id: id })
+    }
+    
+    const creds = await readData('creds') || initAuthCreds()
+    
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {}
+                    for (const id of ids) {
+                        const value = await readData(`${type}-${id}`)
+                        if (value) data[id] = value
+                    }
+                    return data
+                },
+                set: async (data) => {
+                    for (const [type, entries] of Object.entries(data)) {
+                        for (const [id, value] of Object.entries(entries)) {
+                            const key = `${type}-${id}`
+                            if (value) {
+                                await writeData(key, value)
+                            } else {
+                                await removeData(key)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        saveCreds: async () => {
+            await writeData('creds', creds)
+        }
+    }
+}
+```
+
+<Note>
+**Important:** Always use `BufferJSON` for proper serialization of Buffer objects in credentials.
+</Note>
+
+## BufferJSON Utility
+
+Baileys provides `BufferJSON` for properly handling Buffer objects in JSON:
+
+```typescript
+import { BufferJSON } from '@whiskeysockets/baileys'
+
+// Serializing
+const json = JSON.stringify(authState.creds, BufferJSON.replacer)
+
+// Deserializing  
+const creds = JSON.parse(json, BufferJSON.reviver)
+```
+
+<Warning>
+Without `BufferJSON`, Buffer objects will not serialize correctly, causing authentication failures.
+</Warning>
+
+## getMessage Implementation
+
+For message retry and poll decryption, implement `getMessage`:
+
+```typescript
+import { WAMessageKey, proto } from '@whiskeysockets/baileys'
+
+const messageStore = new Map<string, proto.IMessage>()
+
+// Store messages
+sock.ev.on('messages.upsert', ({ messages }) => {
+    for (const msg of messages) {
+        const key = `${msg.key.remoteJid}_${msg.key.id}`
+        messageStore.set(key, msg.message!)
+    }
+})
+
+// Implement getMessage
+const getMessage = async (key: WAMessageKey): Promise<proto.IMessage | undefined> => {
+    const msgKey = `${key.remoteJid}_${key.id}`
+    return messageStore.get(msgKey)
+}
+
+// Use in socket config
+const sock = makeWASocket({
+    auth: state,
+    getMessage
+})
+```
+
+### Database-backed getMessage
+
+```typescript
+const getMessage = async (key: WAMessageKey) => {
+    const msg = await db.messages.findOne({
+        remoteJid: key.remoteJid,
+        id: key.id,
+        fromMe: key.fromMe ?? false
+    })
+    
+    return msg?.message
+}
+
+const sock = makeWASocket({
+    auth: state,
+    getMessage
+})
+```
+
+## In-Memory Store
+
+Baileys provides an optional in-memory store for quick prototyping:
+
+```typescript
+import makeWASocket, { makeInMemoryStore } from '@whiskeysockets/baileys'
+
+const store = makeInMemoryStore({})
+
+// Load from file
+store.readFromFile('./baileys_store.json')
+
+// Auto-save every 10 seconds
+setInterval(() => {
+    store.writeToFile('./baileys_store.json')
+}, 10_000)
+
+const sock = makeWASocket({ auth: state })
+
+// Bind store to socket
+store.bind(sock.ev)
+
+// Access data
+sock.ev.on('chats.upsert', () => {
+    console.log('Chats:', store.chats.all())
+})
+
+sock.ev.on('contacts.upsert', () => {
+    console.log('Contacts:', Object.values(store.contacts))
+})
+```
+
+<Warning>
+The in-memory store is **not recommended for production** as it stores all data in RAM, which is wasteful for large chat histories.
+</Warning>
+
+## Session Cleanup
+
+When a user logs out, clean up their session:
+
+```typescript
+import fs from 'fs/promises'
+
+sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect } = update
+    
+    if (connection === 'close') {
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode
+        
+        if (statusCode === DisconnectReason.loggedOut) {
+            // User logged out - delete session
+            await fs.rm('auth_info_baileys', { recursive: true, force: true })
+            console.log('Session deleted')
+        }
+    }
+})
+```
+
+## Multi-User Sessions
+
+Manage multiple WhatsApp accounts:
+
+```typescript
+const sessions = new Map<string, WASocket>()
+
+async function createSession(userId: string) {
+    const { state, saveCreds } = await useMultiFileAuthState(`sessions/${userId}`)
+    
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false
+    })
+    
+    sock.ev.on('creds.update', saveCreds)
+    
+    sessions.set(userId, sock)
+    return sock
+}
+
+function getSession(userId: string) {
+    return sessions.get(userId)
+}
+
+function closeSession(userId: string) {
+    const sock = sessions.get(userId)
+    if (sock) {
+        sock.end(undefined)
+        sessions.delete(userId)
+    }
+}
+
+// Create sessions for multiple users
+await createSession('user1')
+await createSession('user2')
+await createSession('user3')
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Always Save Credentials">
+Listen to `creds.update` and save immediately - this event may fire frequently.
+</Step>
+
+<Step title="Use Databases in Production">
+Don't use `useMultiFileAuthState` in production - implement database-backed storage.
+</Step>
+
+<Step title="Implement getMessage">
+For retry handling and poll decryption, always implement and provide `getMessage`.
+</Step>
+
+<Step title="Use BufferJSON">
+When serializing auth state to JSON, always use `BufferJSON.replacer` and `BufferJSON.reviver`.
+</Step>
+
+<Step title="Cache Signal Keys">
+Use `makeCacheableSignalKeyStore` for better performance.
+</Step>
+
+<Step title="Handle Logout">
+Detect logout events and clean up session data properly.
+</Step>
+
+</Steps>
+
+## Troubleshooting
+
+### Messages Not Sending
+
+- **Cause:** Credentials not saved when `creds.update` fired
+- **Solution:** Ensure `saveCreds()` is called on every `creds.update` event
+
+### Frequent Re-authentication
+
+- **Cause:** Auth state not persisted between restarts
+- **Solution:** Verify `useMultiFileAuthState` folder path is correct and writable
+
+### Buffer Serialization Errors
+
+- **Cause:** JSON.stringify/parse without BufferJSON
+- **Solution:** Use `BufferJSON.replacer` and `BufferJSON.reviver`
+
+### Key Update Errors
+
+- **Cause:** Keys state `set()` method not saving properly
+- **Solution:** Ensure your custom `keys.set()` implementation saves all data correctly
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Handling Events" icon="bolt" href="/guides/handling-events">
+    Process messages and implement getMessage
+  </Card>
+  <Card title="Socket Configuration" icon="gear" href="/guides/socket-configuration">
+    Configure getMessage and other options
+  </Card>
+  <Card title="Sending Messages" icon="paper-plane" href="/messaging/sending-messages">
+    Send messages with proper retry handling
+  </Card>
+</CardGroup>

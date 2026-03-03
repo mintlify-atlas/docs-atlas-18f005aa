@@ -1,0 +1,154 @@
+---
+title: User Queries
+description: Query user information including existence checks, status, profile pictures, and business profiles using Baileys
+---
+
+## Check If ID Exists on WhatsApp
+
+Verify if a phone number or JID is registered on WhatsApp:
+
+```ts
+const [result] = await sock.onWhatsApp(jid)
+if (result.exists) {
+    console.log(`${jid} exists on WhatsApp, as jid: ${result.jid}`)
+}
+```
+
+<Tip>
+This is useful for validating phone numbers before attempting to send messages.
+</Tip>
+
+## Query Chat History
+
+Fetch older messages from a chat (works for both individual and group chats):
+
+```ts
+// You need to have the oldest message in chat
+const msg = await getOldestMessageInChat(jid) // implement this on your end
+await sock.fetchMessageHistory(
+    50, // quantity (max: 50 per query)
+    msg.key,
+    msg.messageTimestamp
+)
+```
+
+<Note>
+Messages will be received in the `messaging.history-set` event. The maximum number of messages per query is 50.
+</Note>
+
+## Fetch Status
+
+Get a user's WhatsApp status/about text:
+
+```ts
+const status = await sock.fetchStatus(jid)
+console.log('status: ' + status)
+```
+
+## Fetch Profile Picture
+
+Get the display picture of a person or group in different resolutions:
+
+### Low Resolution Picture
+
+```ts
+// for low res picture
+const ppUrl = await sock.profilePictureUrl(jid)
+console.log(ppUrl)
+```
+
+### High Resolution Picture
+
+```ts
+// for high res picture
+const ppUrl = await sock.profilePictureUrl(jid, 'image')
+console.log(ppUrl)
+```
+
+<Info>
+The function accepts `'preview'` for low resolution (default) or `'image'` for high resolution profile pictures.
+</Info>
+
+### Function Signature
+
+From `src/Socket/chats.ts:639-660`:
+
+```ts
+const profilePictureUrl = async (
+    jid: string, 
+    type: 'preview' | 'image' = 'preview', 
+    timeoutMs?: number
+) => {
+    // Returns the URL string or undefined if no picture
+}
+```
+
+## Fetch Business Profile
+
+Get detailed information about a business account:
+
+```ts
+const profile = await sock.getBusinessProfile(jid)
+console.log('business description: ' + profile.description + ', category: ' + profile.category)
+```
+
+### Business Profile Structure
+
+The returned object contains:
+
+```ts
+interface WABusinessProfile {
+    wid?: string                    // Business WhatsApp ID
+    address?: string                // Business address
+    description: string             // Business description
+    website?: string[]              // Website URLs
+    email?: string                  // Business email
+    category?: string               // Business category
+    business_hours?: {              // Operating hours
+        timezone?: string
+        business_config?: WABusinessHoursConfig[]
+    }
+}
+```
+
+### Example Response
+
+```ts
+{
+    wid: '1234567890@s.whatsapp.net',
+    description: 'Premium coffee shop',
+    category: 'Food & Beverage',
+    website: ['https://example.com'],
+    email: 'contact@example.com',
+    address: '123 Main St, City',
+    business_hours: {
+        timezone: 'America/New_York',
+        business_config: [...]
+    }
+}
+```
+
+## Fetch Presence Status
+
+Monitor if someone is typing or online:
+
+```ts
+// The presence update is fetched and called here
+sock.ev.on('presence.update', console.log)
+
+// Request updates for a chat
+await sock.presenceSubscribe(jid)
+```
+
+<Note>
+See the [Presence Updates](/chats/presence) page for detailed information about presence handling.
+</Note>
+
+## Implementation References
+
+- `onWhatsApp` - Uses USync protocol for number validation
+- `fetchStatus` - `src/Socket/chats.ts:246-257`
+- `profilePictureUrl` - `src/Socket/chats.ts:639-660`
+- `getBusinessProfile` - `src/Socket/chats.ts:393-441`
+- `fetchMessageHistory` - Implemented in messages socket
+- `presenceSubscribe` - `src/Socket/chats.ts:730-742`

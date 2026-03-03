@@ -1,0 +1,287 @@
+---
+title: Contact Types
+description: Contact information types for WhatsApp users
+---
+
+Contact types represent WhatsApp user information including profile details and identifiers.
+
+## Contact
+
+Represents a WhatsApp contact with their profile information.
+
+<ResponseField name="id" type="string" required>
+  Contact ID in either LID or JID format (preferred)
+  
+  Examples:
+  - `"1234567890@s.whatsapp.net"` (JID format)
+  - `"1234567890@lid"` (LID format)
+</ResponseField>
+
+<ResponseField name="lid" type="string">
+  Contact ID in LID format only
+  
+  Example: `"1234567890@lid"`
+</ResponseField>
+
+<ResponseField name="phoneNumber" type="string">
+  Contact ID in phone number format
+  
+  Example: `"1234567890@s.whatsapp.net"`
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the contact as you have saved it on your WhatsApp
+  
+  This is the name you manually set for this contact in your phone's contacts.
+</ResponseField>
+
+<ResponseField name="notify" type="string">
+  Name that the contact has set for themselves on WhatsApp
+  
+  This is their WhatsApp display name, set by them in their profile.
+</ResponseField>
+
+<ResponseField name="verifiedName" type="string">
+  Verified business name (for business accounts)
+  
+  Only present for verified business accounts.
+</ResponseField>
+
+<ResponseField name="imgUrl" type="string | null">
+  URL of the contact's profile picture
+  
+  Baileys-specific addition. Possible values:
+  - `"changed"` - Profile picture has been updated
+  - `null` - No profile picture set (using default)
+  - `string` - URL to the profile picture
+  
+  <Warning>
+    This field is populated by Baileys and may not always be present or up-to-date.
+  </Warning>
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Contact's WhatsApp status message
+  
+  Baileys-specific addition. Contains the "About" text from the contact's profile.
+</ResponseField>
+
+## Usage Examples
+
+### Basic Contact Information
+
+```typescript
+import { Contact } from '@whiskeysockets/baileys'
+
+const contact: Contact = {
+  id: '1234567890@s.whatsapp.net',
+  name: 'John Doe',
+  notify: 'Johnny',
+  imgUrl: 'https://pps.whatsapp.net/...',
+  status: 'Hey there! I am using WhatsApp.'
+}
+
+console.log(contact.name)   // Your saved name: "John Doe"
+console.log(contact.notify) // Their display name: "Johnny"
+```
+
+### Handling LID and Phone Number Formats
+
+```typescript
+const contact: Contact = {
+  id: '1234567890@lid',
+  lid: '1234567890@lid',
+  phoneNumber: '1234567890@s.whatsapp.net',
+  notify: 'Alice'
+}
+
+// Prefer LID format when available
+const preferredId = contact.lid || contact.phoneNumber || contact.id
+```
+
+### Profile Picture Status
+
+```typescript
+function getProfilePictureInfo(contact: Contact) {
+  if (contact.imgUrl === null) {
+    return 'Using default profile picture'
+  } else if (contact.imgUrl === 'changed') {
+    return 'Profile picture was recently updated'
+  } else if (contact.imgUrl) {
+    return `Profile picture URL: ${contact.imgUrl}`
+  } else {
+    return 'Profile picture status unknown'
+  }
+}
+```
+
+### Business Account Detection
+
+```typescript
+function isBusinessAccount(contact: Contact): boolean {
+  return !!contact.verifiedName
+}
+
+const contact: Contact = {
+  id: 'business@s.whatsapp.net',
+  notify: 'ACME Corp',
+  verifiedName: 'ACME Corporation'
+}
+
+console.log(isBusinessAccount(contact)) // true
+console.log(contact.verifiedName) // "ACME Corporation"
+```
+
+## Events Emitting Contacts
+
+Contacts are emitted in these events:
+
+### contacts.upsert
+
+New contacts added to your contact list:
+
+```typescript
+sock.ev.on('contacts.upsert', (contacts: Contact[]) => {
+  for (const contact of contacts) {
+    console.log('New contact:', contact.notify || contact.id)
+  }
+})
+```
+
+### contacts.update
+
+Existing contacts updated:
+
+```typescript
+sock.ev.on('contacts.update', (updates: Partial<Contact>[]) => {
+  for (const update of updates) {
+    if (update.id) {
+      console.log(`Contact ${update.id} updated:`, update)
+    }
+  }
+})
+```
+
+### messaging-history.set
+
+Contacts synced from history:
+
+```typescript
+sock.ev.on('messaging-history.set', ({ contacts, chats, messages }) => {
+  console.log(`Synced ${contacts.length} contacts from history`)
+  
+  for (const contact of contacts) {
+    // Store in your database
+    await saveContact(contact)
+  }
+})
+```
+
+## Fetching Contact Information
+
+Use socket methods to fetch contact information:
+
+```typescript
+// Get profile picture URL
+const ppUrl = await sock.profilePictureUrl(
+  '1234567890@s.whatsapp.net',
+  'image' // or 'preview' for thumbnail
+)
+
+// Get contact status
+const status = await sock.fetchStatus('1234567890@s.whatsapp.net')
+console.log(status.status) // "Hey there! I am using WhatsApp."
+
+// Check if number exists on WhatsApp
+const [result] = await sock.onWhatsApp('1234567890')
+if (result.exists) {
+  console.log('JID:', result.jid)
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="ID Format Preference">
+    Always prefer the LID format when available:
+    
+    ```typescript
+    const contactId = contact.lid || contact.phoneNumber || contact.id
+    ```
+    
+    LID (Local Identifier) is more stable than phone number-based JIDs.
+  </Accordion>
+  
+  <Accordion title="Name Display Priority">
+    Show names in this order of preference:
+    
+    1. `contact.name` (your saved name) - most personal
+    2. `contact.notify` (their display name) - their choice
+    3. `contact.verifiedName` (business name) - official name
+    4. Phone number extracted from `contact.id`
+    
+    ```typescript
+    function getDisplayName(contact: Contact): string {
+      return contact.name 
+        || contact.notify 
+        || contact.verifiedName 
+        || contact.id.split('@')[0]
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Profile Picture Caching">
+    Profile picture URLs can expire. Cache them but implement refresh logic:
+    
+    ```typescript
+    async function getCachedProfilePicture(jid: string) {
+      const cached = await cache.get(`pp:${jid}`)
+      if (cached && Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) {
+        return cached.url
+      }
+      
+      const url = await sock.profilePictureUrl(jid, 'image')
+      await cache.set(`pp:${jid}`, { url, timestamp: Date.now() })
+      return url
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Contact Storage">
+    Store contacts in your database for offline access:
+    
+    ```typescript
+    sock.ev.on('contacts.upsert', async (contacts) => {
+      await db.contacts.insertMany(
+        contacts.map(c => ({
+          id: c.id,
+          lid: c.lid,
+          phoneNumber: c.phoneNumber,
+          name: c.name,
+          notify: c.notify,
+          verifiedName: c.verifiedName,
+          status: c.status,
+          updatedAt: new Date()
+        }))
+      )
+    })
+    
+    sock.ev.on('contacts.update', async (updates) => {
+      for (const update of updates) {
+        if (update.id) {
+          await db.contacts.updateOne(
+            { id: update.id },
+            { $set: { ...update, updatedAt: new Date() } }
+          )
+        }
+      }
+    })
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Types
+
+- [Chat](/api/types/chat) - Chat information
+- [Message](/api/types/messages) - Message types
+- [Events](/api/types/events) - Event types including contact events

@@ -1,0 +1,273 @@
+---
+title: "Text Messages"
+description: "Send text messages with mentions, quotes, links, and formatting in Baileys"
+---
+
+## Basic Text Message
+
+Send a simple text message:
+
+```typescript
+await sock.sendMessage(jid, { text: 'Hello World!' })
+```
+
+## Mentioning Users
+
+Mention users in your message by providing their JIDs in the `mentions` array:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: '@12345678901',
+    mentions: ['12345678901@s.whatsapp.net']
+  }
+)
+```
+
+<Note>
+The `@number` in the text is optional but recommended for clarity. The actual mentions are controlled by the `mentions` array.
+</Note>
+
+### Multiple Mentions
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: 'Hello @12345678901 and @10987654321!',
+    mentions: [
+      '12345678901@s.whatsapp.net',
+      '10987654321@s.whatsapp.net'
+    ]
+  }
+)
+```
+
+## Quoting Messages
+
+Reply to a message by quoting it:
+
+```typescript
+// You need the original message object
+const originalMessage: WAMessage = /* get from store or messages.upsert event */
+
+await sock.sendMessage(
+  jid,
+  { text: 'This is a reply' },
+  { quoted: originalMessage }
+)
+```
+
+<Warning>
+The `quoted` parameter is passed in the **options** object (third parameter), not in the content object.
+</Warning>
+
+### Getting Messages to Quote
+
+Messages can be obtained from the `messages.upsert` event:
+
+```typescript
+sock.ev.on('messages.upsert', async ({ messages }) => {
+  for (const msg of messages) {
+    // Store this message for later quoting
+    await saveMessage(msg) // Your implementation
+    
+    // Reply to this specific message
+    await sock.sendMessage(
+      msg.key.remoteJid!,
+      { text: 'Got your message!' },
+      { quoted: msg }
+    )
+  }
+})
+```
+
+## Link Previews
+
+Baileys can automatically generate link previews when you send URLs:
+
+### Prerequisites
+
+First, install the link preview library:
+
+```bash
+yarn add link-preview-js
+# or
+npm install link-preview-js
+```
+
+### Automatic Link Preview
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: 'Check this out: https://github.com/whiskeysockets/baileys'
+  }
+)
+```
+
+Baileys will automatically:
+1. Detect the URL in the text
+2. Fetch the page metadata
+3. Generate a preview with title, description, and thumbnail
+
+### Manual Link Preview
+
+You can provide your own link preview data:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: 'Visit our site https://example.com',
+    linkPreview: {
+      'canonical-url': 'https://example.com',
+      'matched-text': 'https://example.com',
+      title: 'Example Site',
+      description: 'This is an example website',
+      jpegThumbnail: thumbnailBuffer // Optional Buffer
+    }
+  }
+)
+```
+
+### Disable Link Preview
+
+To send a URL without a preview:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: 'https://example.com',
+    linkPreview: null
+  }
+)
+```
+
+## Advanced Text Features
+
+### Context Info
+
+Add additional context to your message:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: 'Message with context',
+    contextInfo: {
+      externalAdReply: {
+        title: 'Custom Title',
+        body: 'Custom Description',
+        thumbnailUrl: 'https://example.com/image.jpg',
+        sourceUrl: 'https://example.com'
+      }
+    }
+  }
+)
+```
+
+### Combined Features
+
+Combine mentions, quotes, and other features:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: 'Hey @12345678901, check this link: https://example.com',
+    mentions: ['12345678901@s.whatsapp.net']
+  },
+  {
+    quoted: originalMessage,
+    ephemeralExpiration: 86400 // 24 hour disappearing message
+  }
+)
+```
+
+## Message Content Type Structure
+
+Text messages are sent as `extendedTextMessage` in the protocol:
+
+```typescript
+type WATextMessage = {
+  text: string
+  matchedText?: string // For link preview
+  description?: string // Link preview description
+  title?: string // Link preview title
+  jpegThumbnail?: Buffer // Link preview thumbnail
+  contextInfo?: ContextInfo // For mentions, quotes, etc.
+}
+```
+
+## Formatting Text
+
+<Warning>
+WhatsApp Web does not natively support markdown-style formatting (bold, italic, etc.) through the protocol. What you see in the WhatsApp mobile app is handled client-side.
+</Warning>
+
+While you can send special formatting characters, the rendering is client-dependent:
+
+```typescript
+// These may or may not render as formatted depending on the client
+await sock.sendMessage(jid, { 
+  text: '*bold* _italic_ ~strikethrough~ ```monospace```' 
+})
+```
+
+## Examples from Source
+
+Here are real examples from the Baileys codebase:
+
+<CodeGroup>
+```typescript Simple Reply
+// From example.ts
+await sock.sendMessage(
+  msg.key.remoteJid!, 
+  { text: 'pong ' + msg.key.id }, 
+  { messageId: id }
+)
+```
+
+```typescript With Mentions
+// From README.md
+await sock.sendMessage(
+  jid,
+  {
+    text: '@12345678901',
+    mentions: ['12345678901@s.whatsapp.net']
+  }
+)
+```
+
+```typescript With Quote
+// From README.md
+await sock.sendMessage(
+  jid, 
+  { text: 'hello word' }, 
+  { quoted: message }
+)
+```
+</CodeGroup>
+
+## Best Practices
+
+1. **Store Messages**: Implement a message store to support quoting and other features
+2. **Validate JIDs**: Ensure the recipient JID is in the correct format
+3. **Handle Errors**: Wrap send operations in try-catch blocks
+4. **Rate Limiting**: Don't send too many messages too quickly to avoid bans
+5. **Link Previews**: Use the library for automatic preview generation
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Media Messages" icon="image" href="/messaging/media-messages">
+    Learn to send images, videos, and documents
+  </Card>
+  <Card title="Message Options" icon="sliders" href="/messaging/message-options">
+    Configure ephemeral messages and other options
+  </Card>
+</CardGroup>

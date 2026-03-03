@@ -1,0 +1,266 @@
+---
+title: "Installation"
+description: "Install Baileys and its dependencies to start building WhatsApp integrations"
+---
+
+## System Requirements
+
+Before installing Baileys, ensure your system meets these requirements:
+
+- **Node.js:** Version 20.0.0 or higher
+- **Package Manager:** npm, yarn, pnpm, or bun
+- **Operating System:** Linux, macOS, or Windows
+
+<Note>
+  Baileys requires Node.js 20+ due to its use of modern JavaScript features and native modules.
+</Note>
+
+## Installing Baileys
+
+Choose your preferred package manager to install Baileys:
+
+<CodeGroup>
+
+```bash npm
+npm install @whiskeysockets/baileys
+```
+
+```bash yarn
+yarn add @whiskeysockets/baileys
+```
+
+```bash pnpm
+pnpm add @whiskeysockets/baileys
+```
+
+```bash bun
+bun add @whiskeysockets/baileys
+```
+
+</CodeGroup>
+
+### Edge Version (Latest Features)
+
+If you want the latest features and fixes (with no stability guarantee), install directly from GitHub:
+
+<CodeGroup>
+
+```bash npm
+npm install github:WhiskeySockets/Baileys
+```
+
+```bash yarn
+yarn add github:WhiskeySockets/Baileys
+```
+
+```bash pnpm
+pnpm add github:WhiskeySockets/Baileys
+```
+
+```bash bun
+bun add github:WhiskeySockets/Baileys
+```
+
+</CodeGroup>
+
+<Warning>
+  The edge version may contain breaking changes and unstable features. Use in production at your own risk.
+</Warning>
+
+## Optional Dependencies
+
+Baileys has several optional dependencies that enable additional features:
+
+### Link Preview Generation
+
+To generate link previews in messages:
+
+<CodeGroup>
+
+```bash npm
+npm install link-preview-js
+```
+
+```bash yarn
+yarn add link-preview-js
+```
+
+```bash pnpm
+pnpm add link-preview-js
+```
+
+```bash bun
+bun add link-preview-js
+```
+
+</CodeGroup>
+
+### Media Thumbnail Generation
+
+For automatic thumbnail generation in images and stickers, install one of:
+
+<Tabs>
+  <Tab title="jimp (JavaScript)">
+    <CodeGroup>
+    ```bash npm
+    npm install jimp
+    ```
+    
+    ```bash yarn
+    yarn add jimp
+    ```
+    
+    ```bash pnpm
+    pnpm add jimp
+    ```
+    
+    ```bash bun
+    bun add jimp
+    ```
+    </CodeGroup>
+  </Tab>
+  <Tab title="sharp (Native, Faster)">
+    <CodeGroup>
+    ```bash npm
+    npm install sharp
+    ```
+    
+    ```bash yarn
+    yarn add sharp
+    ```
+    
+    ```bash pnpm
+    pnpm add sharp
+    ```
+    
+    ```bash bun
+    bun add sharp
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+<Note>
+  **sharp** is faster and more memory efficient, but requires native compilation. **jimp** is pure JavaScript and works everywhere.
+</Note>
+
+### Video Thumbnail Generation
+
+For video thumbnails, install **ffmpeg** on your system:
+
+<Tabs>
+  <Tab title="Ubuntu/Debian">
+    ```bash
+    sudo apt update
+    sudo apt install ffmpeg
+    ```
+  </Tab>
+  <Tab title="macOS">
+    ```bash
+    brew install ffmpeg
+    ```
+  </Tab>
+  <Tab title="Windows">
+    Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
+  </Tab>
+</Tabs>
+
+### Audio Processing
+
+For audio format conversion (optional):
+
+<CodeGroup>
+
+```bash npm
+npm install audio-decode
+```
+
+```bash yarn
+yarn add audio-decode
+```
+
+```bash pnpm
+pnpm add audio-decode
+```
+
+```bash bun
+bun add audio-decode
+```
+
+</CodeGroup>
+
+## TypeScript Setup
+
+Baileys is written in TypeScript and includes full type definitions. For TypeScript projects, no additional setup is required.
+
+### Importing in Your Project
+
+<CodeGroup>
+
+```typescript TypeScript
+import makeWASocket from '@whiskeysockets/baileys'
+```
+
+```javascript JavaScript (ESM)
+import makeWASocket from '@whiskeysockets/baileys'
+```
+
+```javascript JavaScript (CommonJS)
+const { default: makeWASocket } = require('@whiskeysockets/baileys')
+```
+
+</CodeGroup>
+
+## Verification
+
+Verify your installation by creating a simple test file:
+
+```typescript test.ts
+import makeWASocket from '@whiskeysockets/baileys'
+
+console.log('Baileys imported successfully!')
+console.log('makeWASocket is a', typeof makeWASocket)
+```
+
+Run it:
+
+<CodeGroup>
+
+```bash Node + TypeScript
+npx tsx test.ts
+```
+
+```bash ts-node
+npx ts-node test.ts
+```
+
+</CodeGroup>
+
+You should see:
+```
+Baileys imported successfully!
+makeWASocket is a function
+```
+
+## Breaking Changes Notice
+
+<Warning>
+  **Version 7.0.0** introduced multiple breaking changes. If you're upgrading from an earlier version, check the [migration guide](https://whiskey.so/migrate-latest).
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    Create your first connection and send a message
+  </Card>
+  <Card title="Authentication" icon="key" href="/concepts/authentication">
+    Learn about authentication and session management
+  </Card>
+  <Card title="Socket Configuration" icon="sliders" href="/guides/socket-configuration">
+    Explore all available configuration options
+  </Card>
+  <Card title="Example Code" icon="code" href="https://github.com/WhiskeySockets/Baileys/blob/master/Example/example.ts">
+    View the complete example implementation
+  </Card>
+</CardGroup>

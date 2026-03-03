@@ -1,0 +1,436 @@
+---
+title: "Modifying Messages"
+description: "Edit and delete messages in WhatsApp using Baileys"
+---
+
+## Overview
+
+Baileys allows you to modify messages after sending them. You can:
+- Delete messages for everyone
+- Edit sent messages
+- Delete messages for yourself only (via chat modify)
+
+## Deleting Messages
+
+Delete a message for everyone in the chat:
+
+```typescript
+// Send a message
+const msg = await sock.sendMessage(jid, { text: 'Hello World!' })
+
+// Delete it for everyone
+await sock.sendMessage(jid, { delete: msg.key })
+```
+
+### Delete Using Message Key
+
+If you have the message key from a previous message:
+
+```typescript
+const messageKey: WAMessageKey = {
+  remoteJid: jid,
+  fromMe: true,
+  id: 'ABCDEFGHIJKLMNOP'
+}
+
+await sock.sendMessage(jid, { delete: messageKey })
+```
+
+### Delete Received Messages
+
+As a group admin, you can delete anyone's message:
+
+```typescript
+sock.ev.on('messages.upsert', async ({ messages }) => {
+  for (const msg of messages) {
+    // Delete inappropriate messages
+    if (shouldDelete(msg)) {
+      await sock.sendMessage(
+        msg.key.remoteJid!,
+        { delete: msg.key }
+      )
+    }
+  }
+})
+```
+
+<Warning>
+You can only delete messages for everyone within approximately 48 hours of sending. After that, you can only delete for yourself.
+</Warning>
+
+## Editing Messages
+
+Edit a previously sent message:
+
+```typescript
+// Send original message
+const msg = await sock.sendMessage(jid, { text: 'Original text' })
+
+// Edit it
+await sock.sendMessage(jid, {
+  text: 'Updated text',
+  edit: msg.key
+})
+```
+
+### Edit Any Message Type
+
+You can edit various message types:
+
+<CodeGroup>
+```typescript Text
+const msg = await sock.sendMessage(jid, { text: 'Hello' })
+
+await sock.sendMessage(jid, {
+  text: 'Hello World!',
+  edit: msg.key
+})
+```
+
+```typescript Caption
+const msg = await sock.sendMessage(jid, {
+  image: { url: './photo.jpg' },
+  caption: 'Original caption'
+})
+
+await sock.sendMessage(jid, {
+  text: 'Updated caption',
+  edit: msg.key
+})
+```
+
+```typescript With Mentions
+const msg = await sock.sendMessage(jid, {
+  text: 'Hello @12345',
+  mentions: ['12345@s.whatsapp.net']
+})
+
+await sock.sendMessage(jid, {
+  text: 'Updated with @67890',
+  mentions: ['67890@s.whatsapp.net'],
+  edit: msg.key
+})
+```
+</CodeGroup>
+
+### Edit Using Stored Key
+
+```typescript
+// Store the message key when sending
+const sentMessage = await sock.sendMessage(jid, { text: 'Version 1' })
+const messageKey = sentMessage.key
+
+// Later, edit using the stored key
+await sock.sendMessage(jid, {
+  text: 'Version 2',
+  edit: messageKey
+})
+```
+
+<Note>
+Message edits are limited to approximately 15 minutes after sending. The exact time limit may vary based on WhatsApp's policies.
+</Note>
+
+## Protocol Details
+
+### Delete Message Protocol
+
+When you delete a message, Baileys sends a protocol message:
+
+```typescript
+const deleteMessage = {
+  protocolMessage: {
+    key: messageKey,
+    type: WAProto.Message.ProtocolMessage.Type.REVOKE
+  }
+}
+```
+
+This is handled automatically when you use:
+
+```typescript
+await sock.sendMessage(jid, { delete: messageKey })
+```
+
+### Edit Message Protocol
+
+Editing sends a protocol message with the updated content:
+
+```typescript
+const editMessage = {
+  protocolMessage: {
+    key: originalMessageKey,
+    editedMessage: { /* new content */ },
+    timestampMs: Date.now(),
+    type: WAProto.Message.ProtocolMessage.Type.MESSAGE_EDIT
+  }
+}
+```
+
+Baileys handles this when you use:
+
+```typescript
+await sock.sendMessage(jid, {
+  text: 'new text',
+  edit: originalMessageKey
+})
+```
+
+## Delete for Yourself Only
+
+To delete messages only on your device (not for everyone):
+
+```typescript
+await sock.chatModify(
+  {
+    clear: {
+      messages: [
+        {
+          id: 'ATWYHDNNWU81732J',
+          fromMe: true,
+          timestamp: '1654823909'
+        }
+      ]
+    }
+  },
+  jid
+)
+```
+
+<Note>
+This removes the message from your chat history but doesn't delete it for other participants. See [Modifying Chats](/chats/modifying-chats) for more details.
+</Note>
+
+## Best Practices
+
+### 1. Store Message Keys
+
+```typescript
+const messageStore = new Map<string, WAMessageKey>()
+
+const msg = await sock.sendMessage(jid, { text: 'Hello' })
+messageStore.set(msg.key.id!, msg.key)
+
+// Later, retrieve and edit
+const key = messageStore.get(messageId)
+if (key) {
+  await sock.sendMessage(jid, {
+    text: 'Updated',
+    edit: key
+  })
+}
+```
+
+### 2. Implement Message Store
+
+```typescript
+interface StoredMessage {
+  key: WAMessageKey
+  timestamp: number
+  content: any
+}
+
+class MessageStore {
+  private messages = new Map<string, StoredMessage>()
+  
+  store(msg: WAMessage) {
+    this.messages.set(msg.key.id!, {
+      key: msg.key,
+      timestamp: msg.messageTimestamp as number,
+      content: msg.message
+    })
+  }
+  
+  async delete(messageId: string, jid: string) {
+    const msg = this.messages.get(messageId)
+    if (msg) {
+      await sock.sendMessage(jid, { delete: msg.key })
+      this.messages.delete(messageId)
+    }
+  }
+  
+  async edit(messageId: string, jid: string, newText: string) {
+    const msg = this.messages.get(messageId)
+    if (msg) {
+      await sock.sendMessage(jid, {
+        text: newText,
+        edit: msg.key
+      })
+    }
+  }
+}
+```
+
+### 3. Handle Edit Events
+
+```typescript
+sock.ev.on('messages.update', async (updates) => {
+  for (const { key, update } of updates) {
+    if (update.message) {
+      console.log('Message edited:', key.id)
+      // Update in your database
+      await updateMessageInDB(key.id!, update.message)
+    }
+  }
+})
+```
+
+### 4. Validate Before Deleting
+
+```typescript
+async function deleteMessage(messageKey: WAMessageKey, jid: string) {
+  // Check if message is not too old
+  const msg = await getMessageFromStore(messageKey)
+  if (!msg) {
+    throw new Error('Message not found')
+  }
+  
+  const ageInHours = (Date.now() - msg.timestamp * 1000) / (1000 * 60 * 60)
+  if (ageInHours > 48) {
+    throw new Error('Message too old to delete for everyone')
+  }
+  
+  // Delete for everyone
+  await sock.sendMessage(jid, { delete: messageKey })
+}
+```
+
+## Error Handling
+
+```typescript
+try {
+  await sock.sendMessage(jid, { delete: messageKey })
+  console.log('Message deleted successfully')
+} catch (error) {
+  if (error.message.includes('404')) {
+    console.error('Message not found or already deleted')
+  } else if (error.message.includes('403')) {
+    console.error('No permission to delete this message')
+  } else {
+    console.error('Failed to delete message:', error)
+  }
+}
+```
+
+## Limitations
+
+### Delete Limitations
+- Can only delete within ~48 hours of sending
+- Must be sent by you or (in groups) you must be admin
+- Cannot delete messages in newsletters (read-only)
+
+### Edit Limitations
+- Can only edit within ~15 minutes of sending
+- Can only edit your own messages
+- Edit history is visible to recipients (WhatsApp shows "edited" label)
+- Cannot edit media type (e.g., can't change image to video)
+
+## Message Update Events
+
+Listen for message modifications:
+
+```typescript
+sock.ev.on('messages.update', (updates) => {
+  for (const { key, update } of updates) {
+    if (update.message) {
+      console.log('Message edited:', key.id)
+    }
+    if (update.status) {
+      console.log('Message status changed:', update.status)
+    }
+  }
+})
+```
+
+## Examples from Source
+
+<CodeGroup>
+```typescript Delete
+// From README.md
+const msg = await sock.sendMessage(jid, { text: 'hello word' })
+await sock.sendMessage(jid, { delete: msg.key })
+```
+
+```typescript Edit
+// From README.md
+await sock.sendMessage(jid, {
+  text: 'updated text goes here',
+  edit: response.key,
+});
+```
+
+```typescript Delete for Self
+// From README.md
+await sock.chatModify(
+  {
+    clear: {
+      messages: [
+        {
+          id: 'ATWYHDNNWU81732J',
+          fromMe: true,
+          timestamp: '1654823909'
+        }
+      ]
+    }
+  },
+  jid
+)
+```
+</CodeGroup>
+
+## Complete Example
+
+```typescript
+import makeWASocket from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({ /* config */ })
+
+// Message management
+class MessageManager {
+  private messages = new Map<string, WAMessage>()
+  
+  async send(jid: string, content: any) {
+    const msg = await sock.sendMessage(jid, content)
+    this.messages.set(msg.key.id!, msg)
+    return msg
+  }
+  
+  async edit(messageId: string, newText: string) {
+    const msg = this.messages.get(messageId)
+    if (!msg) throw new Error('Message not found')
+    
+    await sock.sendMessage(msg.key.remoteJid!, {
+      text: newText,
+      edit: msg.key
+    })
+  }
+  
+  async delete(messageId: string) {
+    const msg = this.messages.get(messageId)
+    if (!msg) throw new Error('Message not found')
+    
+    await sock.sendMessage(msg.key.remoteJid!, {
+      delete: msg.key
+    })
+    this.messages.delete(messageId)
+  }
+}
+
+// Usage
+const manager = new MessageManager()
+
+const msg = await manager.send(jid, { text: 'Hello' })
+await manager.edit(msg.key.id!, 'Hello World!')
+await manager.delete(msg.key.id!)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Downloading Media" icon="download" href="/messaging/downloading-media">
+    Learn to download media from messages
+  </Card>
+  <Card title="Message Options" icon="sliders" href="/messaging/message-options">
+    Configure ephemeral and other options
+  </Card>
+</CardGroup>

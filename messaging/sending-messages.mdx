@@ -1,0 +1,149 @@
+---
+title: "Sending Messages"
+description: "Learn how to send messages using Baileys, from basic text to complex media messages"
+---
+
+## Overview
+
+Bailey provides a unified `sendMessage` API for sending all types of messages. Whether you're sending text, media, or interactive content, the same function is used with different content types.
+
+## Basic Message Sending
+
+All messages are sent using the `sendMessage` method:
+
+```typescript
+const jid: string
+const content: AnyMessageContent
+const options: MiscMessageGenerationOptions
+
+await sock.sendMessage(jid, content, options)
+```
+
+### Parameters
+
+- **jid**: The recipient's WhatsApp ID
+  - For individuals: `[country code][phone number]@s.whatsapp.net`
+  - For groups: `123456789-123345@g.us`
+  - For broadcast lists: `[timestamp]@broadcast`
+  - For stories: `status@broadcast`
+- **content**: The message content (see [AnyMessageContent](https://baileys.whiskeysockets.io/types/AnyMessageContent.html))
+- **options**: Message options like quoted messages, ephemeral settings (see [MiscMessageGenerationOptions](https://baileys.whiskeysockets.io/types/MiscMessageGenerationOptions.html))
+
+## WhatsApp ID Format
+
+Understanding the JID (Jabber ID) format is crucial for sending messages:
+
+<CodeGroup>
+```typescript Individual
+const jid = '19999999999@s.whatsapp.net' // +1 999-999-9999
+```
+
+```typescript Group
+const jid = '123456789-123345@g.us'
+```
+
+```typescript Broadcast
+const jid = '1234567890@broadcast'
+```
+
+```typescript Status/Story
+const jid = 'status@broadcast'
+```
+</CodeGroup>
+
+<Warning>
+The JID must not include `+`, `()`, or `-` characters. Only include the country code and phone number digits.
+</Warning>
+
+## Simple Text Message
+
+The most basic message type:
+
+```typescript
+await sock.sendMessage(jid, { text: 'Hello World!' })
+```
+
+## Message Return Value
+
+The `sendMessage` function returns a WAMessage object containing:
+
+```typescript
+const msg = await sock.sendMessage(jid, { text: 'hello' })
+
+// Message structure
+msg.key // { remoteJid, fromMe, id }
+msg.message // The message content
+msg.messageTimestamp // Unix timestamp
+msg.status // Message status (PENDING, SERVER_ACK, DELIVERY_ACK, READ, PLAYED)
+```
+
+## Message Types Overview
+
+Baileys supports a wide variety of message types:
+
+### Text-Based Messages
+- Text messages with mentions
+- Link previews
+- Quoted/replied messages
+
+### Media Messages
+- Images (with captions)
+- Videos (including GIFs)
+- Audio (voice notes)
+- Documents
+- Stickers
+
+### Location & Contact
+- Location sharing
+- Contact cards
+
+### Interactive Messages
+- Polls
+- Reactions
+- Pin messages
+- Events
+
+### Special Messages
+- Forward messages
+- View-once messages
+- Disappearing messages
+
+See the following pages for detailed examples of each message type:
+
+- [Text Messages](/messaging/text-messages) - Text, mentions, quotes, links
+- [Media Messages](/messaging/media-messages) - Images, videos, audio, documents
+- [Message Options](/messaging/message-options) - Ephemeral, quoted, mentions
+- [Modifying Messages](/messaging/modifying-messages) - Edit and delete
+- [Downloading Media](/messaging/downloading-media) - Download received media
+
+## Error Handling
+
+```typescript
+try {
+  const msg = await sock.sendMessage(jid, { text: 'Hello!' })
+  console.log('Message sent:', msg.key.id)
+} catch (error) {
+  console.error('Failed to send message:', error)
+}
+```
+
+<Note>
+Messages may fail to send due to network issues, invalid JIDs, or the recipient blocking you. Always implement proper error handling.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Text Messages" icon="message" href="/messaging/text-messages">
+    Learn about sending text with mentions, quotes, and links
+  </Card>
+  <Card title="Media Messages" icon="image" href="/messaging/media-messages">
+    Send images, videos, audio, and documents
+  </Card>
+  <Card title="Message Options" icon="sliders" href="/messaging/message-options">
+    Configure ephemeral messages, quotes, and more
+  </Card>
+  <Card title="Modify Messages" icon="pen-to-square" href="/messaging/modifying-messages">
+    Edit and delete sent messages
+  </Card>
+</CardGroup>

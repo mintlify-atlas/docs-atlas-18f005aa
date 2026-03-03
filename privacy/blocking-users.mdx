@@ -1,0 +1,133 @@
+---
+title: Blocking Users
+description: Block and unblock users, and fetch your blocklist in WhatsApp using Baileys
+---
+
+## Block a User
+
+Block a user to prevent them from sending you messages:
+
+```ts
+await sock.updateBlockStatus(jid, 'block')
+```
+
+## Unblock a User
+
+Unblock a previously blocked user:
+
+```ts
+await sock.updateBlockStatus(jid, 'unblock')
+```
+
+## Function Signature
+
+The `updateBlockStatus` function is implemented in `src/Socket/chats.ts:373-391`:
+
+```ts
+const updateBlockStatus = async (jid: string, action: 'block' | 'unblock') => {
+    await query({
+        tag: 'iq',
+        attrs: {
+            xmlns: 'blocklist',
+            to: S_WHATSAPP_NET,
+            type: 'set'
+        },
+        content: [
+            {
+                tag: 'item',
+                attrs: {
+                    action,
+                    jid
+                }
+            }
+        ]
+    })
+}
+```
+
+## Fetch Blocklist
+
+Retrieve a list of all blocked contacts:
+
+```ts
+const blocklist = await sock.fetchBlocklist()
+console.log(blocklist)
+// Output: ['1234567890@s.whatsapp.net', '0987654321@s.whatsapp.net']
+```
+
+### Blocklist Implementation
+
+From `src/Socket/chats.ts:359-371`:
+
+```ts
+const fetchBlocklist = async () => {
+    const result = await query({
+        tag: 'iq',
+        attrs: {
+            xmlns: 'blocklist',
+            to: S_WHATSAPP_NET,
+            type: 'get'
+        }
+    })
+
+    const listNode = getBinaryNodeChild(result, 'list')
+    return getBinaryNodeChildren(listNode, 'item').map(n => n.attrs.jid)
+}
+```
+
+<Info>
+The function returns an array of JID strings representing all blocked users.
+</Info>
+
+## Complete Example
+
+```ts
+// Block a user
+const userToBlock = '1234567890@s.whatsapp.net'
+await sock.updateBlockStatus(userToBlock, 'block')
+console.log(`Blocked ${userToBlock}`)
+
+// Fetch and display blocklist
+const blocklist = await sock.fetchBlocklist()
+console.log('Current blocklist:', blocklist)
+
+// Unblock a user
+if (blocklist.includes(userToBlock)) {
+    await sock.updateBlockStatus(userToBlock, 'unblock')
+    console.log(`Unblocked ${userToBlock}`)
+}
+
+// Verify blocklist updated
+const updatedBlocklist = await sock.fetchBlocklist()
+console.log('Updated blocklist:', updatedBlocklist)
+```
+
+## Listen for Block Status Changes
+
+You can track block status changes through events:
+
+```ts
+sock.ev.on('blocklist.update', ({ blocklist }) => {
+    console.log('Blocklist updated:', blocklist)
+})
+```
+
+<Warning>
+Blocking a user will:
+- Prevent them from sending you messages
+- Hide your last seen, online status, and status updates from them
+- Not notify them that they've been blocked
+</Warning>
+
+<Tip>
+Use `fetchBlocklist()` during initialization to sync your local blocklist state with WhatsApp servers.
+</Tip>
+
+## Implementation Details
+
+Both functions use WhatsApp's `blocklist` XML namespace:
+
+- **Block/Unblock**: Sends an IQ query with `type: 'set'` and an item containing the action
+- **Fetch Blocklist**: Sends an IQ query with `type: 'get'` and parses the returned item nodes
+
+The functions are exported from the `makeChatsSocket` in `src/Socket/chats.ts:1225-1271`.

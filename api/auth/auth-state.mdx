@@ -1,0 +1,245 @@
+---
+title: AuthenticationState
+description: Core authentication state types for managing WhatsApp session credentials and signal keys
+---
+
+The authentication state manages credentials and cryptographic keys required for WhatsApp Web sessions.
+
+## AuthenticationState
+
+The main authentication state object that combines credentials and key storage.
+
+<ResponseField name="creds" type="AuthenticationCreds" required>
+  Authentication credentials containing identity keys and account information
+</ResponseField>
+
+<ResponseField name="keys" type="SignalKeyStore" required>
+  Key store for managing Signal protocol keys (pre-keys, sessions, etc.)
+</ResponseField>
+
+## AuthenticationCreds
+
+Extends `SignalCreds` with additional WhatsApp-specific authentication data.
+
+<ResponseField name="signedIdentityKey" type="KeyPair" required>
+  The signed identity key pair (readonly)
+</ResponseField>
+
+<ResponseField name="signedPreKey" type="SignedKeyPair" required>
+  The signed pre-key pair (readonly)
+</ResponseField>
+
+<ResponseField name="registrationId" type="number" required>
+  Signal protocol registration ID (readonly)
+</ResponseField>
+
+<ResponseField name="noiseKey" type="KeyPair" required>
+  Noise protocol key pair for encryption (readonly)
+</ResponseField>
+
+<ResponseField name="pairingEphemeralKeyPair" type="KeyPair" required>
+  Ephemeral key pair used during device pairing (readonly)
+</ResponseField>
+
+<ResponseField name="advSecretKey" type="string" required>
+  Advanced secret key for device identity
+</ResponseField>
+
+<ResponseField name="me" type="Contact">
+  Your own contact information
+</ResponseField>
+
+<ResponseField name="account" type="proto.IADVSignedDeviceIdentity">
+  Signed device identity from WhatsApp
+</ResponseField>
+
+<ResponseField name="signalIdentities" type="SignalIdentity[]">
+  Array of signal identities for registered devices
+</ResponseField>
+
+<ResponseField name="myAppStateKeyId" type="string">
+  Key ID for app state synchronization
+</ResponseField>
+
+<ResponseField name="firstUnuploadedPreKeyId" type="number" required>
+  ID of the first pre-key that hasn't been uploaded to servers
+</ResponseField>
+
+<ResponseField name="nextPreKeyId" type="number" required>
+  The next pre-key ID to generate
+</ResponseField>
+
+<ResponseField name="lastAccountSyncTimestamp" type="number">
+  Unix timestamp of last account synchronization
+</ResponseField>
+
+<ResponseField name="platform" type="string">
+  Platform identifier (e.g., "android", "ios")
+</ResponseField>
+
+<ResponseField name="processedHistoryMessages" type="MinimalMessage[]" required>
+  Array of history messages that have been processed
+</ResponseField>
+
+<ResponseField name="accountSyncCounter" type="number" required>
+  Number of times history and app state has been synced
+</ResponseField>
+
+<ResponseField name="accountSettings" type="AccountSettings" required>
+  Account-level settings
+</ResponseField>
+
+<ResponseField name="registered" type="boolean" required>
+  Whether the account is fully registered
+</ResponseField>
+
+<ResponseField name="pairingCode" type="string | undefined" required>
+  Pairing code for linking devices
+</ResponseField>
+
+<ResponseField name="lastPropHash" type="string | undefined" required>
+  Hash of last properties update
+</ResponseField>
+
+<ResponseField name="routingInfo" type="Buffer | undefined" required>
+  Routing information for message delivery
+</ResponseField>
+
+<ResponseField name="additionalData" type="any | undefined">
+  Additional custom data
+</ResponseField>
+
+## Supporting Types
+
+### KeyPair
+
+<ResponseField name="public" type="Uint8Array" required>
+  Public key bytes
+</ResponseField>
+
+<ResponseField name="private" type="Uint8Array" required>
+  Private key bytes
+</ResponseField>
+
+### SignedKeyPair
+
+<ResponseField name="keyPair" type="KeyPair" required>
+  The key pair
+</ResponseField>
+
+<ResponseField name="signature" type="Uint8Array" required>
+  Signature of the key pair
+</ResponseField>
+
+<ResponseField name="keyId" type="number" required>
+  Unique identifier for this key
+</ResponseField>
+
+<ResponseField name="timestampS" type="number">
+  Timestamp in seconds when the key was created
+</ResponseField>
+
+### SignalIdentity
+
+<ResponseField name="identifier" type="ProtocolAddress" required>
+  Protocol address containing JID and device ID
+</ResponseField>
+
+<ResponseField name="identifierKey" type="Uint8Array" required>
+  Identity key bytes
+</ResponseField>
+
+### ProtocolAddress
+
+<ResponseField name="name" type="string" required>
+  The JID (WhatsApp ID)
+</ResponseField>
+
+<ResponseField name="deviceId" type="number" required>
+  Device identifier
+</ResponseField>
+
+### AccountSettings
+
+<ResponseField name="unarchiveChats" type="boolean" required>
+  Whether to unarchive chats when a new message is received
+</ResponseField>
+
+<ResponseField name="defaultDisappearingMode" type="Pick<proto.IConversation, 'ephemeralExpiration' | 'ephemeralSettingTimestamp'>">
+  The default mode to start new conversations with for disappearing messages
+</ResponseField>
+
+## SignalKeyStore
+
+Interface for storing and retrieving Signal protocol keys.
+
+<ResponseField name="get" type="function" required>
+  Retrieve keys from the store
+  
+  ```typescript
+  get<T extends keyof SignalDataTypeMap>(
+    type: T, 
+    ids: string[]
+  ): Awaitable<{ [id: string]: SignalDataTypeMap[T] }>
+  ```
+</ResponseField>
+
+<ResponseField name="set" type="function" required>
+  Store keys in the store
+  
+  ```typescript
+  set(data: SignalDataSet): Awaitable<void>
+  ```
+</ResponseField>
+
+<ResponseField name="clear" type="function">
+  Clear all data in the store
+  
+  ```typescript
+  clear?(): Awaitable<void>
+  ```
+</ResponseField>
+
+## SignalDataTypeMap
+
+Mapping of Signal data types to their value types:
+
+<ResponseField name="pre-key" type="KeyPair">
+  Pre-key pairs for establishing sessions
+</ResponseField>
+
+<ResponseField name="session" type="Uint8Array">
+  Encrypted session state
+</ResponseField>
+
+<ResponseField name="sender-key" type="Uint8Array">
+  Group message sender keys
+</ResponseField>
+
+<ResponseField name="sender-key-memory" type="{ [jid: string]: boolean }">
+  Cache of distributed sender keys
+</ResponseField>
+
+<ResponseField name="app-state-sync-key" type="proto.Message.IAppStateSyncKeyData">
+  Keys for syncing app state
+</ResponseField>
+
+<ResponseField name="app-state-sync-version" type="LTHashState">
+  Version info for app state sync
+</ResponseField>
+
+<ResponseField name="lid-mapping" type="string">
+  Mapping between phone numbers and LIDs
+</ResponseField>
+
+<ResponseField name="device-list" type="string[]">
+  List of devices associated with an account
+</ResponseField>
+
+<ResponseField name="tctoken" type="{ token: Buffer; timestamp?: string }">
+  Temporary credentials token
+</ResponseField>
+
+<ResponseField name="identity-key" type="Uint8Array">
+  Identity keys for contacts
+</ResponseField>

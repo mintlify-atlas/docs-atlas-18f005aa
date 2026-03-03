@@ -1,0 +1,468 @@
+---
+title: Message Utilities
+description: Utility functions for creating, manipulating, and extracting information from WhatsApp messages
+---
+
+Message utility functions help you work with WhatsApp messages, including generating message content, extracting URLs, normalizing messages, and creating forwarded messages.
+
+## generateMessageIDV2
+
+Generates a unique message ID v2 compatible with WhatsApp's format.
+
+```typescript
+export const generateMessageIDV2 = (userId?: string): string
+```
+
+<ParamField path="userId" type="string" optional>
+  The user's JID to include in the message ID generation
+</ParamField>
+
+<ResponseField name="return" type="string">
+  A unique message ID in the format `3EB0` followed by 18 hex characters
+</ResponseField>
+
+**Example:**
+```typescript
+import { generateMessageIDV2 } from '@whiskeysockets/baileys'
+
+const messageId = generateMessageIDV2()
+console.log(messageId) // "3EB01A2B3C4D5E6F7G8H9I"
+
+// With user ID
+const messageIdWithUser = generateMessageIDV2('1234567890@s.whatsapp.net')
+```
+
+**When to use:**
+- When you need to generate a custom message ID
+- For creating messages programmatically
+- The ID includes timestamp and random data for uniqueness
+
+---
+
+## getContentType
+
+Extracts the content type key from a message object.
+
+```typescript
+export const getContentType = (
+  content: proto.IMessage | undefined
+): keyof proto.IMessage | undefined
+```
+
+<ParamField path="content" type="proto.IMessage | undefined">
+  The message content object to analyze
+</ParamField>
+
+<ResponseField name="return" type="keyof proto.IMessage | undefined">
+  The message content type (e.g., 'conversation', 'imageMessage', 'videoMessage')
+</ResponseField>
+
+**Example:**
+```typescript
+import { getContentType } from '@whiskeysockets/baileys'
+
+const message = {
+  conversation: 'Hello World'
+}
+
+const contentType = getContentType(message)
+console.log(contentType) // "conversation"
+
+const imageMessage = {
+  imageMessage: {
+    url: 'https://...',
+    mimetype: 'image/jpeg'
+  }
+}
+
+const imageType = getContentType(imageMessage)
+console.log(imageType) // "imageMessage"
+```
+
+**When to use:**
+- To determine what type of message you're dealing with
+- Before processing message content
+- For routing messages based on their type
+
+---
+
+## extractUrlFromText
+
+Extracts the first URL found in a text string using regex.
+
+```typescript
+export const extractUrlFromText = (text: string): string | undefined
+```
+
+<ParamField path="text" type="string" required>
+  The text string to search for URLs
+</ParamField>
+
+<ResponseField name="return" type="string | undefined">
+  The first URL found in the text, or undefined if no URL is present
+</ResponseField>
+
+**Example:**
+```typescript
+import { extractUrlFromText } from '@whiskeysockets/baileys'
+
+const text1 = 'Check out https://google.com for more info'
+const url1 = extractUrlFromText(text1)
+console.log(url1) // "https://google.com"
+
+const text2 = 'No links here'
+const url2 = extractUrlFromText(text2)
+console.log(url2) // undefined
+```
+
+**When to use:**
+- To detect if a message contains a URL
+- Before generating link previews
+- For URL validation or filtering
+
+---
+
+## generateLinkPreviewIfRequired
+
+Generates link preview metadata for a URL in the text if a `getUrlInfo` function is provided.
+
+```typescript
+export const generateLinkPreviewIfRequired = async (
+  text: string,
+  getUrlInfo: MessageGenerationOptions['getUrlInfo'],
+  logger: MessageGenerationOptions['logger']
+): Promise<WAUrlInfo | undefined>
+```
+
+<ParamField path="text" type="string" required>
+  The message text potentially containing a URL
+</ParamField>
+
+<ParamField path="getUrlInfo" type="(url: string) => Promise<WAUrlInfo>" optional>
+  Function to fetch URL metadata (title, description, thumbnail)
+</ParamField>
+
+<ParamField path="logger" type="ILogger" optional>
+  Logger instance for error tracking
+</ParamField>
+
+<ResponseField name="return" type="WAUrlInfo | undefined">
+  Link preview information including title, description, and thumbnail
+</ResponseField>
+
+**Example:**
+```typescript
+import { generateLinkPreviewIfRequired } from '@whiskeysockets/baileys'
+
+const text = 'Check out https://github.com'
+const getUrlInfo = async (url) => {
+  // Fetch URL metadata
+  return {
+    'matched-text': url,
+    title: 'GitHub',
+    description: 'Where the world builds software',
+    jpegThumbnail: Buffer.from('...')
+  }
+}
+
+const preview = await generateLinkPreviewIfRequired(text, getUrlInfo, logger)
+```
+
+**When to use:**
+- To automatically generate link previews in messages
+- When sending text messages with URLs
+- For rich message formatting
+
+---
+
+## normalizeMessageContent
+
+Normalizes ephemeral, view once, and other wrapped messages to their core content.
+
+```typescript
+export const normalizeMessageContent = (
+  content: WAMessageContent | null | undefined
+): WAMessageContent | undefined
+```
+
+<ParamField path="content" type="WAMessageContent | null | undefined">
+  The message content to normalize
+</ParamField>
+
+<ResponseField name="return" type="WAMessageContent | undefined">
+  The normalized message content without wrappers
+</ResponseField>
+
+**Example:**
+```typescript
+import { normalizeMessageContent } from '@whiskeysockets/baileys'
+
+// Ephemeral message wrapper
+const ephemeralMsg = {
+  ephemeralMessage: {
+    message: {
+      conversation: 'This disappears'
+    }
+  }
+}
+
+const normalized = normalizeMessageContent(ephemeralMsg)
+console.log(normalized)
+// { conversation: 'This disappears' }
+
+// View once message
+const viewOnceMsg = {
+  viewOnceMessage: {
+    message: {
+      imageMessage: { url: '...', mimetype: 'image/jpeg' }
+    }
+  }
+}
+
+const normalizedImage = normalizeMessageContent(viewOnceMsg)
+console.log(normalizedImage)
+// { imageMessage: { url: '...', mimetype: 'image/jpeg' } }
+```
+
+**When to use:**
+- To extract the actual message content from wrapped messages
+- Before processing or displaying message content
+- When you need the core message regardless of ephemeral/view-once status
+
+---
+
+## generateForwardMessageContent
+
+Generates message content for forwarding a message, maintaining the forward chain.
+
+```typescript
+export const generateForwardMessageContent = (
+  message: WAMessage,
+  forceForward?: boolean
+): WAMessageContent
+```
+
+<ParamField path="message" type="WAMessage" required>
+  The message to forward
+</ParamField>
+
+<ParamField path="forceForward" type="boolean" optional default={false}>
+  Whether to show the message as forwarded even if it's from you
+</ParamField>
+
+<ResponseField name="return" type="WAMessageContent">
+  Message content with forwarding metadata and score updated
+</ResponseField>
+
+**Example:**
+```typescript
+import { generateForwardMessageContent } from '@whiskeysockets/baileys'
+
+// Get the original message
+const originalMessage = {
+  key: { remoteJid: '1234@s.whatsapp.net', fromMe: false, id: 'ABC' },
+  message: { conversation: 'Hello!' }
+}
+
+// Generate forward content
+const forwardContent = generateForwardMessageContent(originalMessage)
+
+// Send the forwarded message
+await sock.sendMessage(jid, forwardContent)
+
+// Force forward even if message is from you
+const forceForwardContent = generateForwardMessageContent(
+  originalMessage,
+  true
+)
+```
+
+**When to use:**
+- When implementing message forwarding
+- To maintain the forward chain (shows "Forwarded" label)
+- Automatically handles forwarding score incrementation
+
+---
+
+## generateWAMessageFromContent
+
+Generates a complete WAMessage object from message content.
+
+```typescript
+export const generateWAMessageFromContent = (
+  jid: string,
+  message: WAMessageContent,
+  options: MessageGenerationOptionsFromContent
+): WAMessage
+```
+
+<ParamField path="jid" type="string" required>
+  The recipient's JID (e.g., '1234567890@s.whatsapp.net')
+</ParamField>
+
+<ParamField path="message" type="WAMessageContent" required>
+  The message content to wrap
+</ParamField>
+
+<ParamField path="options" type="MessageGenerationOptionsFromContent" required>
+  Options for message generation
+</ParamField>
+
+### Options
+
+<ParamField path="options.timestamp" type="Date" optional>
+  Message timestamp (defaults to current time)
+</ParamField>
+
+<ParamField path="options.messageId" type="string" optional>
+  Custom message ID (auto-generated if not provided)
+</ParamField>
+
+<ParamField path="options.quoted" type="WAMessage" optional>
+  Message to quote/reply to
+</ParamField>
+
+<ParamField path="options.userJid" type="string" required>
+  Your user JID
+</ParamField>
+
+<ParamField path="options.ephemeralExpiration" type="number" optional>
+  Ephemeral message expiration in seconds
+</ParamField>
+
+<ResponseField name="return" type="WAMessage">
+  Complete message object ready to be sent
+</ResponseField>
+
+**Example:**
+```typescript
+import { generateWAMessageFromContent, proto } from '@whiskeysockets/baileys'
+
+const jid = '1234567890@s.whatsapp.net'
+const messageContent = proto.Message.fromObject({
+  conversation: 'Hello World'
+})
+
+const message = generateWAMessageFromContent(
+  jid,
+  messageContent,
+  {
+    userJid: 'me@s.whatsapp.net',
+    timestamp: new Date(),
+    messageId: 'custom-id'
+  }
+)
+
+console.log(message.key.id) // "custom-id"
+console.log(message.messageTimestamp) // current timestamp
+
+// With quoted message
+const quotedMsg = generateWAMessageFromContent(
+  jid,
+  messageContent,
+  {
+    userJid: 'me@s.whatsapp.net',
+    quoted: previousMessage // Quote another message
+  }
+)
+```
+
+**When to use:**
+- When you have raw message content and need a complete message object
+- For advanced message construction
+- When implementing custom message types
+
+---
+
+## extractMessageContent
+
+Extracts the actual message content from template messages and button messages.
+
+```typescript
+export const extractMessageContent = (
+  content: WAMessageContent | undefined | null
+): WAMessageContent | undefined
+```
+
+<ParamField path="content" type="WAMessageContent | undefined | null">
+  Message content to extract from
+</ParamField>
+
+<ResponseField name="return" type="WAMessageContent | undefined">
+  The extracted core message content
+</ResponseField>
+
+**Example:**
+```typescript
+import { extractMessageContent } from '@whiskeysockets/baileys'
+
+// Button message
+const buttonMsg = {
+  buttonsMessage: {
+    imageMessage: { url: '...', mimetype: 'image/jpeg' },
+    contentText: 'Choose an option'
+  }
+}
+
+const extracted = extractMessageContent(buttonMsg)
+console.log(extracted)
+// { imageMessage: { url: '...', mimetype: 'image/jpeg' } }
+
+// Template message
+const templateMsg = {
+  templateMessage: {
+    hydratedFourRowTemplate: {
+      videoMessage: { url: '...', mimetype: 'video/mp4' }
+    }
+  }
+}
+
+const extractedVideo = extractMessageContent(templateMsg)
+console.log(extractedVideo)
+// { videoMessage: { url: '...', mimetype: 'video/mp4' } }
+```
+
+**When to use:**
+- To get the media from button/template messages
+- Before downloading media from interactive messages
+- When processing complex message types
+
+---
+
+## getDevice
+
+Returns the device type based on the message ID format.
+
+```typescript
+export const getDevice = (id: string): 'ios' | 'web' | 'android' | 'desktop' | 'unknown'
+```
+
+<ParamField path="id" type="string" required>
+  The message ID to analyze
+</ParamField>
+
+<ResponseField name="return" type="'ios' | 'web' | 'android' | 'desktop' | 'unknown'">
+  The predicted device type based on ID pattern
+</ResponseField>
+
+**Example:**
+```typescript
+import { getDevice } from '@whiskeysockets/baileys'
+
+const iosId = '3A123456789012345678'
+const device1 = getDevice(iosId)
+console.log(device1) // "ios"
+
+const webId = '3E12345678901234567890'
+const device2 = getDevice(webId)
+console.log(device2) // "web"
+
+const androidId = '123456789012345678901'
+const device3 = getDevice(androidId)
+console.log(device3) // "android"
+```
+
+**When to use:**
+- For analytics on which devices users are messaging from
+- To detect message origin
+- For debugging purposes

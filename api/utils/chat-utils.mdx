@@ -1,0 +1,404 @@
+---
+title: Chat & JID Utilities
+description: Utility functions for working with WhatsApp JIDs (Jabber IDs) and chat identifiers
+---
+
+JID (Jabber ID) utilities help you work with WhatsApp's user and chat identifiers, validate them, and extract information from them.
+
+## jidNormalizedUser
+
+Normalizes a JID to use the standard WhatsApp server format.
+
+```typescript
+export const jidNormalizedUser = (jid: string | undefined): string
+```
+
+<ParamField path="jid" type="string | undefined">
+  The JID to normalize
+</ParamField>
+
+<ResponseField name="return" type="string">
+  Normalized JID (converts 'c.us' to 's.whatsapp.net')
+</ResponseField>
+
+**Example:**
+```typescript
+import { jidNormalizedUser } from '@whiskeysockets/baileys'
+
+const jid1 = '1234567890@c.us'
+const normalized1 = jidNormalizedUser(jid1)
+console.log(normalized1) // "1234567890@s.whatsapp.net"
+
+const jid2 = '1234567890@s.whatsapp.net'
+const normalized2 = jidNormalizedUser(jid2)
+console.log(normalized2) // "1234567890@s.whatsapp.net"
+
+const groupJid = '123456789@g.us'
+const normalizedGroup = jidNormalizedUser(groupJid)
+console.log(normalizedGroup) // "123456789@g.us" (unchanged)
+```
+
+**When to use:**
+- Before comparing JIDs
+- When storing JIDs in databases
+- To ensure consistent JID format across your application
+
+---
+
+## jidDecode
+
+Decodes a JID into its component parts.
+
+```typescript
+export const jidDecode = (jid: string | undefined): FullJid | undefined
+```
+
+<ParamField path="jid" type="string | undefined">
+  The JID to decode
+</ParamField>
+
+<ResponseField name="return" type="FullJid | undefined">
+  Object containing user, server, device, and domainType, or undefined if invalid
+</ResponseField>
+
+### FullJid Type
+
+```typescript
+type FullJid = {
+  user: string
+  server: JidServer
+  device?: number
+  domainType?: number
+}
+```
+
+**Example:**
+```typescript
+import { jidDecode } from '@whiskeysockets/baileys'
+
+// Regular user
+const decoded1 = jidDecode('1234567890@s.whatsapp.net')
+console.log(decoded1)
+// {
+//   user: '1234567890',
+//   server: 's.whatsapp.net',
+//   domainType: 0
+// }
+
+// User with device ID
+const decoded2 = jidDecode('1234567890:5@s.whatsapp.net')
+console.log(decoded2)
+// {
+//   user: '1234567890',
+//   server: 's.whatsapp.net',
+//   device: 5,
+//   domainType: 0
+// }
+
+// Group
+const decoded3 = jidDecode('123456789@g.us')
+console.log(decoded3)
+// {
+//   user: '123456789',
+//   server: 'g.us',
+//   domainType: 0
+// }
+
+// LID (Linked ID)
+const decoded4 = jidDecode('abcd1234@lid')
+console.log(decoded4)
+// {
+//   user: 'abcd1234',
+//   server: 'lid',
+//   domainType: 1
+// }
+```
+
+**When to use:**
+- To extract the user ID from a JID
+- To determine the server type
+- To get device information from multi-device JIDs
+
+---
+
+## jidEncode
+
+Encodes JID components into a complete JID string.
+
+```typescript
+export const jidEncode = (
+  user: string | number | null,
+  server: JidServer,
+  device?: number,
+  agent?: number
+): string
+```
+
+<ParamField path="user" type="string | number | null" required>
+  The user identifier
+</ParamField>
+
+<ParamField path="server" type="JidServer" required>
+  Server type: 'c.us', 'g.us', 's.whatsapp.net', 'broadcast', 'lid', etc.
+</ParamField>
+
+<ParamField path="device" type="number" optional>
+  Device ID for multi-device
+</ParamField>
+
+<ParamField path="agent" type="number" optional>
+  Agent ID
+</ParamField>
+
+<ResponseField name="return" type="string">
+  Complete JID string
+</ResponseField>
+
+**Example:**
+```typescript
+import { jidEncode } from '@whiskeysockets/baileys'
+
+// Regular user
+const jid1 = jidEncode('1234567890', 's.whatsapp.net')
+console.log(jid1) // "1234567890@s.whatsapp.net"
+
+// Group
+const jid2 = jidEncode('123456789', 'g.us')
+console.log(jid2) // "123456789@g.us"
+
+// With device ID
+const jid3 = jidEncode('1234567890', 's.whatsapp.net', 5)
+console.log(jid3) // "1234567890:5@s.whatsapp.net"
+
+// Status broadcast
+const jid4 = jidEncode('status', 'broadcast')
+console.log(jid4) // "status@broadcast"
+```
+
+**When to use:**
+- To construct JIDs programmatically
+- When building multi-device JIDs
+- For creating group or broadcast JIDs
+
+---
+
+## isJidGroup
+
+Checks if a JID represents a group.
+
+```typescript
+export const isJidGroup = (jid: string | undefined): boolean
+```
+
+<ParamField path="jid" type="string | undefined">
+  The JID to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if the JID is a group (@g.us)
+</ResponseField>
+
+**Example:**
+```typescript
+import { isJidGroup } from '@whiskeysockets/baileys'
+
+const groupJid = '123456789@g.us'
+console.log(isJidGroup(groupJid)) // true
+
+const userJid = '1234567890@s.whatsapp.net'
+console.log(isJidGroup(userJid)) // false
+
+const broadcastJid = 'status@broadcast'
+console.log(isJidGroup(broadcastJid)) // false
+```
+
+**When to use:**
+- To determine if a message is from a group
+- Before performing group-specific operations
+- For routing logic based on chat type
+
+---
+
+## isJidBroadcast
+
+Checks if a JID represents a broadcast list.
+
+```typescript
+export const isJidBroadcast = (jid: string | undefined): boolean
+```
+
+<ParamField path="jid" type="string | undefined">
+  The JID to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if the JID is a broadcast (@broadcast)
+</ResponseField>
+
+**Example:**
+```typescript
+import { isJidBroadcast } from '@whiskeysockets/baileys'
+
+const broadcastJid = 'status@broadcast'
+console.log(isJidBroadcast(broadcastJid)) // true
+
+const userJid = '1234567890@s.whatsapp.net'
+console.log(isJidBroadcast(userJid)) // false
+```
+
+**When to use:**
+- To identify broadcast messages
+- For handling status updates
+- To filter broadcast-specific events
+
+---
+
+## isJidStatusBroadcast
+
+Checks if a JID is specifically the status broadcast.
+
+```typescript
+export const isJidStatusBroadcast = (jid: string): boolean
+```
+
+<ParamField path="jid" type="string" required>
+  The JID to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if the JID is exactly 'status@broadcast'
+</ResponseField>
+
+**Example:**
+```typescript
+import { isJidStatusBroadcast } from '@whiskeysockets/baileys'
+
+const statusJid = 'status@broadcast'
+console.log(isJidStatusBroadcast(statusJid)) // true
+
+const userJid = '1234567890@s.whatsapp.net'
+console.log(isJidStatusBroadcast(userJid)) // false
+```
+
+**When to use:**
+- To identify WhatsApp status messages
+- For filtering status updates
+- Different from regular broadcasts
+
+---
+
+## isJidNewsletter
+
+Checks if a JID represents a newsletter/channel.
+
+```typescript
+export const isJidNewsletter = (jid: string | undefined): boolean
+```
+
+<ParamField path="jid" type="string | undefined">
+  The JID to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if the JID is a newsletter (@newsletter)
+</ResponseField>
+
+**Example:**
+```typescript
+import { isJidNewsletter } from '@whiskeysockets/baileys'
+
+const newsletterJid = '123456789@newsletter'
+console.log(isJidNewsletter(newsletterJid)) // true
+
+const groupJid = '123456789@g.us'
+console.log(isJidNewsletter(groupJid)) // false
+```
+
+**When to use:**
+- To identify newsletter/channel messages
+- Before performing newsletter-specific operations
+- Newsletter messages use different upload mechanisms
+
+---
+
+## isLidUser
+
+Checks if a JID is a LID (Linked ID) user.
+
+```typescript
+export const isLidUser = (jid: string | undefined): boolean
+```
+
+<ParamField path="jid" type="string | undefined">
+  The JID to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if the JID ends with '@lid'
+</ResponseField>
+
+**Example:**
+```typescript
+import { isLidUser } from '@whiskeysockets/baileys'
+
+const lidJid = 'abcd1234@lid'
+console.log(isLidUser(lidJid)) // true
+
+const regularJid = '1234567890@s.whatsapp.net'
+console.log(isLidUser(regularJid)) // false
+```
+
+**When to use:**
+- To identify linked device users
+- For handling privacy-focused identifiers
+- LIDs are used for enhanced privacy in some regions
+
+---
+
+## areJidsSameUser
+
+Checks if two JIDs represent the same user (ignoring device ID).
+
+```typescript
+export const areJidsSameUser = (
+  jid1: string | undefined,
+  jid2: string | undefined
+): boolean
+```
+
+<ParamField path="jid1" type="string | undefined">
+  First JID to compare
+</ParamField>
+
+<ParamField path="jid2" type="string | undefined">
+  Second JID to compare
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if both JIDs have the same user ID
+</ResponseField>
+
+**Example:**
+```typescript
+import { areJidsSameUser } from '@whiskeysockets/baileys'
+
+// Same user, different devices
+const jid1 = '1234567890@s.whatsapp.net'
+const jid2 = '1234567890:5@s.whatsapp.net'
+console.log(areJidsSameUser(jid1, jid2)) // true
+
+// Different users
+const jid3 = '1234567890@s.whatsapp.net'
+const jid4 = '9876543210@s.whatsapp.net'
+console.log(areJidsSameUser(jid3, jid4)) // false
+
+// Same user, different server formats
+const jid5 = '1234567890@c.us'
+const jid6 = '1234567890@s.whatsapp.net'
+console.log(areJidsSameUser(jid5, jid6)) // true
+```
+
+**When to use:**
+- To compare users across different devices
+- For deduplication
+- When checking message participants

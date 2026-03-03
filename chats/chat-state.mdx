@@ -1,0 +1,72 @@
+---
+title: Chat State Management
+description: Mark messages as read/unread and manage chat states in WhatsApp using Baileys
+---
+
+## Reading Messages
+
+A set of message keys must be explicitly marked read now. You cannot mark an entire 'chat' read as it were with Baileys Web. This means you have to keep track of unread messages.
+
+### Mark Messages as Read
+
+```ts
+const key: WAMessageKey
+// can pass multiple keys to read multiple messages as well
+await sock.readMessages([key])
+```
+
+<Info>
+The message ID is the unique identifier of the message that you are marking as read. On a `WAMessage`, the `messageID` can be accessed using `messageID = message.key.id`.
+</Info>
+
+## Message Key Structure
+
+The `WAMessageKey` contains the following properties:
+
+```ts
+interface WAMessageKey {
+    remoteJid?: string    // The chat JID
+    fromMe?: boolean      // Whether message was sent by you
+    id?: string          // The message ID
+    participant?: string  // For group messages, the sender
+}
+```
+
+## Mark Chat Read/Unread
+
+While you can't mark an entire chat as read directly, you can use `chatModify` with the last message:
+
+```ts
+const lastMsgInChat = await getLastMessageInChat(jid) // implement this on your end
+
+// Mark chat as unread
+await sock.chatModify({ markRead: false, lastMessages: [lastMsgInChat] }, jid)
+
+// Mark chat as read
+await sock.chatModify({ markRead: true, lastMessages: [lastMsgInChat] }, jid)
+```
+
+<Note>
+You need to provide `lastMessages` array containing message metadata with the `key` and `messageTimestamp` properties.
+</Note>
+
+## Tracking Unread Messages
+
+Since Baileys requires explicit message keys to mark as read, you should implement your own unread message tracking:
+
+```ts
+// Example: Track incoming messages
+sock.ev.on('messages.upsert', async ({ messages }) => {
+    for (const msg of messages) {
+        if (!msg.key.fromMe && msg.message) {
+            // Store unread message key
+            // Later, mark as read:
+            await sock.readMessages([msg.key])
+        }
+    }
+})
+```
+
+<Tip>
+The `readMessages` function is implemented in `src/Socket/messages-send.ts` and sends receipt acknowledgments to WhatsApp servers.
+</Tip>

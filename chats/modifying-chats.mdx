@@ -1,0 +1,131 @@
+---
+title: Modifying Chats
+description: Archive, mute, pin, delete chats and star messages in WhatsApp using Baileys
+---
+
+WA uses an encrypted form of communication to send chat/app updates. This has been implemented mostly and you can send the following updates:
+
+<Warning>
+If you mess up one of your updates, WA can log you out of all your devices and you'll have to log in again.
+</Warning>
+
+## Archive a Chat
+
+To archive a chat, you need to provide the last message in that chat:
+
+```ts
+const lastMsgInChat = await getLastMessageInChat(jid) // implement this on your end
+await sock.chatModify({ archive: true, lastMessages: [lastMsgInChat] }, jid)
+```
+
+## Mute/Unmute a Chat
+
+You can mute a chat for specific durations or unmute it completely.
+
+### Supported Times
+
+| Time   | Milliseconds  |
+|--------|---------------|
+| Remove | null          |
+| 8h     | 86,400,000    |
+| 7d     | 604,800,000   |
+
+### Examples
+
+```ts
+// mute for 8 hours
+await sock.chatModify({ mute: 8 * 60 * 60 * 1000 }, jid)
+
+// unmute
+await sock.chatModify({ mute: null }, jid)
+```
+
+## Mark a Chat Read/Unread
+
+You can mark entire chats as read or unread by providing the last message:
+
+```ts
+const lastMsgInChat = await getLastMessageInChat(jid) // implement this on your end
+// mark it unread
+await sock.chatModify({ markRead: false, lastMessages: [lastMsgInChat] }, jid)
+```
+
+<Note>
+To mark as read, use `markRead: true`
+</Note>
+
+## Delete a Message for Me
+
+Delete specific messages from your chat history:
+
+```ts
+await sock.chatModify(
+    {
+        clear: {
+            messages: [
+                {
+                    id: 'ATWYHDNNWU81732J',
+                    fromMe: true,
+                    timestamp: '1654823909'
+                }
+            ]
+        }
+    },
+    jid
+)
+```
+
+## Delete a Chat
+
+Completely delete a chat conversation:
+
+```ts
+const lastMsgInChat = await getLastMessageInChat(jid) // implement this on your end
+await sock.chatModify({
+        delete: true,
+        lastMessages: [
+            {
+                key: lastMsgInChat.key,
+                messageTimestamp: lastMsgInChat.messageTimestamp
+            }
+        ]
+    },
+    jid
+)
+```
+
+## Pin/Unpin a Chat
+
+Pin important chats to the top of your chat list:
+
+```ts
+await sock.chatModify({
+        pin: true // or `false` to unpin
+    },
+    jid
+)
+```
+
+## Star/Unstar a Message
+
+Mark messages as starred for easy reference:
+
+```ts
+await sock.chatModify({
+        star: {
+            messages: [
+                {
+                    id: 'messageID',
+                    fromMe: true // or `false`
+                }
+            ],
+            star: true // true: Star Message; false: Unstar Message
+        }
+    },
+    jid
+)
+```
+
+<Tip>
+The `chatModify` function is defined in `src/Socket/chats.ts:899` and uses app state patches to sync changes across devices.
+</Tip>

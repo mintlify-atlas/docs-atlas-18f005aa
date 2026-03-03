@@ -1,0 +1,484 @@
+---
+title: Chat Types
+description: Chat and conversation types for managing WhatsApp chats
+---
+
+Chat types represent WhatsApp conversations with their metadata and state.
+
+## Chat
+
+Extends `proto.IConversation` with additional Baileys-specific fields.
+
+<ResponseField name="id" type="string">
+  Chat JID (identifier)
+  
+  Examples:
+  - `"1234567890@s.whatsapp.net"` (individual chat)
+  - `"123456789@g.us"` (group chat)
+  - `"status@broadcast"` (status broadcasts)
+</ResponseField>
+
+<ResponseField name="conversationTimestamp" type="number | Long">
+  Timestamp of the conversation
+</ResponseField>
+
+<ResponseField name="lastMessageRecvTimestamp" type="number">
+  Unix timestamp of when the last message was received in the chat (Baileys extension)
+</ResponseField>
+
+<ResponseField name="unreadCount" type="number">
+  Number of unread messages
+</ResponseField>
+
+<ResponseField name="archived" type="boolean">
+  Whether the chat is archived
+</ResponseField>
+
+<ResponseField name="pinned" type="number">
+  Pin position (0 = not pinned, higher = pinned earlier)
+</ResponseField>
+
+<ResponseField name="muteEndTime" type="number | Long">
+  Unix timestamp when mute expires (0 = not muted)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Chat name (for groups, business accounts, or saved contacts)
+</ResponseField>
+
+<ResponseField name="notSpam" type="boolean">
+  Whether the chat is marked as not spam
+</ResponseField>
+
+<ResponseField name="ephemeralExpiration" type="number">
+  Disappearing messages expiration time in seconds
+  
+  Common values:
+  - `0` - disabled
+  - `86400` - 24 hours
+  - `604800` - 7 days
+  - `7776000` - 90 days
+</ResponseField>
+
+<ResponseField name="ephemeralSettingTimestamp" type="number | Long">
+  When disappearing messages setting was last changed
+</ResponseField>
+
+## ChatUpdate
+
+Partial update to a chat's properties.
+
+<ResponseField name="conditional" type="function">
+  Optional condition to check before applying the update
+  
+  ```typescript
+  (bufferedData: BufferedEventData) => boolean | undefined
+  ```
+  
+  Returns:
+  - `true` - apply the update
+  - `false` - discard the update
+  - `undefined` - condition not yet fulfilled, buffer the update
+</ResponseField>
+
+<ResponseField name="timestamp" type="number">
+  Unix timestamp of when the update occurred
+</ResponseField>
+
+All other fields are from `Partial<Chat>`.
+
+## ChatModification
+
+Union type for modifying chat properties. Each modification has a specific structure:
+
+<AccordionGroup>
+  <Accordion title="Archive/Unarchive">
+    ```typescript
+    {
+      archive: boolean
+      lastMessages: LastMessageList
+    }
+    ```
+    
+    <ParamField path="archive" type="boolean" required>
+      `true` to archive, `false` to unarchive
+    </ParamField>
+    
+    <ParamField path="lastMessages" type="LastMessageList" required>
+      Last messages in the chat for sync purposes
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="Pin/Unpin">
+    ```typescript
+    {
+      pin: boolean
+    }
+    ```
+    
+    <ParamField path="pin" type="boolean" required>
+      `true` to pin, `false` to unpin
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="Mute/Unmute">
+    ```typescript
+    {
+      mute: number | null
+    }
+    ```
+    
+    <ParamField path="mute" type="number | null" required>
+      - `null` - unmute
+      - Unix timestamp - mute until this time
+      - Duration in seconds - mute for this long from now
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="Mark Read/Unread">
+    ```typescript
+    {
+      markRead: boolean
+      lastMessages: LastMessageList
+    }
+    ```
+    
+    <ParamField path="markRead" type="boolean" required>
+      `true` to mark as read, `false` to mark as unread
+    </ParamField>
+    
+    <ParamField path="lastMessages" type="LastMessageList" required>
+      Last messages to mark
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="Clear Messages">
+    ```typescript
+    {
+      clear: boolean
+      lastMessages: LastMessageList
+    }
+    ```
+    
+    <ParamField path="clear" type="boolean" required>
+      Must be `true`
+    </ParamField>
+    
+    <ParamField path="lastMessages" type="LastMessageList" required>
+      Messages to clear
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="Delete Chat">
+    ```typescript
+    {
+      delete: true
+      lastMessages: LastMessageList
+    }
+    ```
+    
+    <ParamField path="delete" type="true" required>
+      Must be `true`
+    </ParamField>
+    
+    <ParamField path="lastMessages" type="LastMessageList" required>
+      Last messages in chat
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="Delete Message for Me">
+    ```typescript
+    {
+      deleteForMe: {
+        deleteMedia: boolean
+        key: WAMessageKey
+        timestamp: number
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Star Messages">
+    ```typescript
+    {
+      star: {
+        messages: { id: string; fromMe?: boolean }[]
+        star: boolean
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Push Name Setting">
+    ```typescript
+    {
+      pushNameSetting: string
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Contact Action">
+    ```typescript
+    {
+      contact: proto.SyncActionValue.IContactAction | null
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Disable Link Previews">
+    ```typescript
+    {
+      disableLinkPreviews: proto.SyncActionValue.IPrivacySettingDisableLinkPreviewsAction
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Label Actions">
+    ```typescript
+    { addLabel: LabelActionBody }
+    { addChatLabel: ChatLabelAssociationActionBody }
+    { removeChatLabel: ChatLabelAssociationActionBody }
+    { addMessageLabel: MessageLabelAssociationActionBody }
+    { removeMessageLabel: MessageLabelAssociationActionBody }
+    ```
+  </Accordion>
+  
+  <Accordion title="Quick Reply">
+    ```typescript
+    {
+      quick Reply: QuickReplyAction
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Supporting Types
+
+### LastMessageList
+
+```typescript
+type LastMessageList = 
+  | MinimalMessage[] 
+  | proto.SyncActionValue.ISyncActionMessageRange
+```
+
+List of messages sorted reverse-chronologically (latest first). For MD modifications, the last message in the array must be the last message received in the chat.
+
+### PresenceData
+
+<ResponseField name="lastKnownPresence" type="WAPresence" required>
+  Last known presence status
+  
+  Values: `'unavailable'`, `'available'`, `'composing'`, `'recording'`, `'paused'`
+</ResponseField>
+
+<ResponseField name="lastSeen" type="number">
+  Unix timestamp of when user was last seen
+</ResponseField>
+
+### WAPresence
+
+```typescript
+type WAPresence = 
+  | 'unavailable' 
+  | 'available' 
+  | 'composing' 
+  | 'recording' 
+  | 'paused'
+```
+
+## Privacy Settings Types
+
+### WAPrivacyValue
+
+```typescript
+type WAPrivacyValue = 
+  | 'all' 
+  | 'contacts' 
+  | 'contact_blacklist' 
+  | 'none'
+```
+
+### WAPrivacyOnlineValue
+
+```typescript
+type WAPrivacyOnlineValue = 'all' | 'match_last_seen'
+```
+
+### WAPrivacyGroupAddValue
+
+```typescript
+type WAPrivacyGroupAddValue = 
+  | 'all' 
+  | 'contacts' 
+  | 'contact_blacklist'
+```
+
+### WAReadReceiptsValue
+
+```typescript
+type WAReadReceiptsValue = 'all' | 'none'
+```
+
+### WAPrivacyCallValue
+
+```typescript
+type WAPrivacyCallValue = 'all' | 'known'
+```
+
+### WAPrivacyMessagesValue
+
+```typescript
+type WAPrivacyMessagesValue = 'all' | 'contacts'
+```
+
+## Usage Examples
+
+### Handling Chat Events
+
+```typescript
+import { Chat, ChatUpdate } from '@whiskeysockets/baileys'
+
+// New chats
+sock.ev.on('chats.upsert', (chats: Chat[]) => {
+  for (const chat of chats) {
+    console.log('New chat:', chat.id)
+    console.log('Unread count:', chat.unreadCount)
+    console.log('Archived:', chat.archived)
+  }
+})
+
+// Chat updates
+sock.ev.on('chats.update', (updates: ChatUpdate[]) => {
+  for (const update of updates) {
+    if (update.unreadCount !== undefined) {
+      console.log(`${update.id}: ${update.unreadCount} unread`)
+    }
+    if (update.archived !== undefined) {
+      console.log(`${update.id} ${update.archived ? 'archived' : 'unarchived'}`)
+    }
+  }
+})
+
+// Deleted chats
+sock.ev.on('chats.delete', (deletedChats: string[]) => {
+  console.log('Deleted chats:', deletedChats)
+})
+```
+
+### Modifying Chats
+
+```typescript
+// Archive a chat
+await sock.chatModify(
+  {
+    archive: true,
+    lastMessages: [lastMessage]
+  },
+  chatJid
+)
+
+// Pin a chat
+await sock.chatModify({ pin: true }, chatJid)
+
+// Mute for 8 hours
+await sock.chatModify(
+  { mute: 8 * 60 * 60 * 1000 },
+  chatJid
+)
+
+// Unmute
+await sock.chatModify({ mute: null }, chatJid)
+
+// Mark as read
+await sock.chatModify(
+  {
+    markRead: true,
+    lastMessages: [lastMessage]
+  },
+  chatJid
+)
+
+// Delete chat
+await sock.chatModify(
+  {
+    delete: true,
+    lastMessages: [lastMessage]
+  },
+  chatJid
+)
+```
+
+### Working with Presence
+
+```typescript
+// Subscribe to presence updates
+await sock.presenceSubscribe(chatJid)
+
+// Send presence
+await sock.sendPresenceUpdate('composing', chatJid)
+await sock.sendPresenceUpdate('paused', chatJid)
+
+// Handle presence updates
+sock.ev.on('presence.update', ({ id, presences }) => {
+  for (const [jid, presence] of Object.entries(presences)) {
+    console.log(`${jid} is ${presence.lastKnownPresence}`)
+    
+    if (presence.lastSeen) {
+      const date = new Date(presence.lastSeen * 1000)
+      console.log(`Last seen: ${date.toLocaleString()}`)
+    }
+  }
+})
+```
+
+### Checking Chat State
+
+```typescript
+function getChatState(chat: Chat) {
+  const state = {
+    isPinned: (chat.pinned || 0) > 0,
+    isArchived: chat.archived || false,
+    isMuted: (chat.muteEndTime || 0) > Date.now() / 1000,
+    hasUnread: (chat.unreadCount || 0) > 0,
+    hasDisappearingMessages: (chat.ephemeralExpiration || 0) > 0
+  }
+  
+  return state
+}
+
+const chat: Chat = { /* ... */ }
+const state = getChatState(chat)
+
+if (state.isMuted) {
+  console.log('Chat is muted')
+}
+if (state.hasDisappearingMessages) {
+  console.log(`Messages disappear after ${chat.ephemeralExpiration}s`)
+}
+```
+
+### Chat Sorting
+
+```typescript
+function sortChats(chats: Chat[]): Chat[] {
+  return chats.sort((a, b) => {
+    // Pinned chats first (higher pin number = pinned earlier)
+    const aPinned = a.pinned || 0
+    const bPinned = b.pinned || 0
+    if (aPinned !== bPinned) return bPinned - aPinned
+    
+    // Then by last message timestamp
+    const aTime = a.lastMessageRecvTimestamp || a.conversationTimestamp || 0
+    const bTime = b.lastMessageRecvTimestamp || b.conversationTimestamp || 0
+    return Number(bTime) - Number(aTime)
+  })
+}
+```
+
+## Related Types
+
+- [Contact](/api/types/contact) - Contact information
+- [Message](/api/types/messages) - Message types
+- [Events](/api/types/events) - Event types including chat events
+- [Groups](/groups/group-metadata) - Group metadata and information

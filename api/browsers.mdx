@@ -1,0 +1,369 @@
+---
+title: Browsers
+description: Browser configuration constant and platform identification utilities
+---
+
+## Overview
+
+The `Browsers` constant provides predefined browser configurations for WhatsApp Web connections. Different browser configurations can affect the connection behavior, message history sync, and device identification.
+
+## Type Definition
+
+```typescript
+type BrowsersMap = {
+  ubuntu(browser: string): [string, string, string]
+  macOS(browser: string): [string, string, string]
+  baileys(browser: string): [string, string, string]
+  windows(browser: string): [string, string, string]
+  appropriate(browser: string): [string, string, string]
+}
+```
+
+Each function returns a `WABrowserDescription` tuple: `[OS, Browser, Version]`
+
+## Available Configurations
+
+### Browsers.ubuntu()
+
+<ParamField path="browser" type="string" required>
+  The browser name to use (e.g., 'Chrome', 'Firefox', 'MyApp').
+</ParamField>
+
+<ResponseField name="return" type="[string, string, string]">
+  Returns `['Ubuntu', browser, '22.04.4']`
+</ResponseField>
+
+```typescript
+import { Browsers } from '@whiskeysockets/baileys'
+
+const config = Browsers.ubuntu('Chrome')
+// Returns: ['Ubuntu', 'Chrome', '22.04.4']
+
+const sock = makeWASocket({
+  browser: Browsers.ubuntu('MyApp'),
+  auth: state
+})
+```
+
+### Browsers.macOS()
+
+<ParamField path="browser" type="string" required>
+  The browser name to use (e.g., 'Safari', 'Chrome', 'Desktop').
+</ParamField>
+
+<ResponseField name="return" type="[string, string, string]">
+  Returns `['Mac OS', browser, '14.4.1']`
+</ResponseField>
+
+```typescript
+import { Browsers } from '@whiskeysockets/baileys'
+
+const config = Browsers.macOS('Safari')
+// Returns: ['Mac OS', 'Safari', '14.4.1']
+
+// This is the default configuration
+const sock = makeWASocket({
+  browser: Browsers.macOS('Chrome'), // Default
+  auth: state
+})
+```
+
+### Browsers.baileys()
+
+<ParamField path="browser" type="string" required>
+  The browser/app name to use (e.g., 'MyApp', 'Bot').
+</ParamField>
+
+<ResponseField name="return" type="[string, string, string]">
+  Returns `['Baileys', browser, '6.5.0']`
+</ResponseField>
+
+```typescript
+import { Browsers } from '@whiskeysockets/baileys'
+
+const config = Browsers.baileys('MyBot')
+// Returns: ['Baileys', 'MyBot', '6.5.0']
+
+const sock = makeWASocket({
+  browser: Browsers.baileys('WhatsAppBot'),
+  auth: state
+})
+```
+
+### Browsers.windows()
+
+<ParamField path="browser" type="string" required>
+  The browser name to use (e.g., 'Edge', 'Chrome').
+</ParamField>
+
+<ResponseField name="return" type="[string, string, string]">
+  Returns `['Windows', browser, '10.0.22631']`
+</ResponseField>
+
+```typescript
+import { Browsers } from '@whiskeysockets/baileys'
+
+const config = Browsers.windows('Edge')
+// Returns: ['Windows', 'Edge', '10.0.22631']
+
+const sock = makeWASocket({
+  browser: Browsers.windows('Chrome'),
+  auth: state
+})
+```
+
+### Browsers.appropriate()
+
+<ParamField path="browser" type="string" required>
+  The browser name to use.
+</ParamField>
+
+<ResponseField name="return" type="[string, string, string]">
+  Returns browser configuration based on your current operating system and release version.
+</ResponseField>
+
+```typescript
+import { Browsers } from '@whiskeysockets/baileys'
+
+// Automatically detects OS and uses appropriate configuration
+const config = Browsers.appropriate('Chrome')
+// On macOS: ['Mac OS', 'Chrome', '14.4.1']
+// On Ubuntu: ['Ubuntu', 'Chrome', '22.04.4']
+// On Windows: ['Windows', 'Chrome', '10.0.22631']
+// On others: ['Ubuntu', 'Chrome', release()]
+
+const sock = makeWASocket({
+  browser: Browsers.appropriate('MyApp'),
+  auth: state
+})
+```
+
+## Platform Mapping
+
+The `appropriate()` function uses the following platform detection:
+
+```typescript
+const PLATFORM_MAP = {
+  aix: 'AIX',
+  darwin: 'Mac OS',
+  win32: 'Windows',
+  android: 'Android',
+  freebsd: 'FreeBSD',
+  openbsd: 'OpenBSD',
+  sunos: 'Solaris',
+  linux: undefined,    // Falls back to 'Ubuntu'
+  haiku: undefined,    // Falls back to 'Ubuntu'
+  cygwin: undefined,   // Falls back to 'Ubuntu'
+  netbsd: undefined    // Falls back to 'Ubuntu'
+}
+```
+
+## getPlatformId()
+
+Utility function to get the platform ID for a given browser string.
+
+<ParamField path="browser" type="string" required>
+  The browser name (case-insensitive).
+</ParamField>
+
+<ResponseField name="return" type="string">
+  Returns the platform type ID. Defaults to '1' (Chrome) if not found.
+</ResponseField>
+
+```typescript
+import { getPlatformId } from '@whiskeysockets/baileys'
+
+const platformId = getPlatformId('chrome')
+// Returns platform ID based on proto.DeviceProps.PlatformType
+```
+
+## Usage Examples
+
+### QR Code Connection with Custom Browser
+
+```typescript
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+  browser: Browsers.ubuntu('MyApp'),
+  printQRInTerminal: true,
+  auth: state
+})
+
+// QR code will show "MyApp" on Ubuntu
+```
+
+### Desktop Configuration for Full History
+
+To receive more message history, use a desktop configuration:
+
+```typescript
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+  browser: Browsers.macOS('Desktop'),
+  syncFullHistory: true,
+  auth: state
+})
+```
+
+### Dynamic Browser Selection
+
+```typescript
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const useQR = true
+const appName = 'MyWhatsAppBot'
+
+const sock = makeWASocket({
+  browser: useQR 
+    ? Browsers.ubuntu(appName)  // Shows on QR code scan
+    : Browsers.appropriate(appName), // Matches system
+  printQRInTerminal: useQR,
+  auth: state
+})
+```
+
+### Pairing Code with Custom Name
+
+```typescript
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+  browser: Browsers.baileys('MyCustomBot'),
+  printQRInTerminal: false,
+  auth: state
+})
+
+if (!sock.authState.creds.registered) {
+  const code = await sock.requestPairingCode('1234567890')
+  console.log(`Pairing code: ${code}`)
+}
+```
+
+## Browser Configuration Impact
+
+### Message History
+
+Different browser configurations can affect how much message history you receive:
+
+- **Desktop configurations** (e.g., `Browsers.macOS('Desktop')`) typically receive more history
+- **Mobile-like configurations** may receive less history
+- Combined with `syncFullHistory: true` for maximum history sync
+
+```typescript
+const sock = makeWASocket({
+  browser: Browsers.macOS('Desktop'),
+  syncFullHistory: true,
+  auth: state
+})
+```
+
+### Device Identification
+
+The browser configuration is visible in WhatsApp's "Linked Devices" section:
+
+```typescript
+// Shows as "Chrome on Ubuntu" in WhatsApp
+browser: Browsers.ubuntu('Chrome')
+
+// Shows as "MyApp on Baileys" in WhatsApp
+browser: Browsers.baileys('MyApp')
+```
+
+## Default Configuration
+
+When not specified, Baileys uses:
+
+```typescript
+const DEFAULT_CONNECTION_CONFIG = {
+  browser: Browsers.macOS('Chrome'),
+  // ... other defaults
+}
+```
+
+## Complete Example
+
+```typescript
+import makeWASocket, { 
+  Browsers,
+  useMultiFileAuthState,
+  DisconnectReason 
+} from '@whiskeysockets/baileys'
+import { Boom } from '@hapi/boom'
+
+const { state, saveCreds } = await useMultiFileAuthState('auth_info')
+
+const sock = makeWASocket({
+  browser: Browsers.ubuntu('MyWhatsAppClient'),
+  syncFullHistory: true,
+  auth: state
+})
+
+sock.ev.on('connection.update', (update) => {
+  const { connection, lastDisconnect, qr } = update
+  
+  if (connection === 'close') {
+    const shouldReconnect = 
+      (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
+    
+    if (shouldReconnect) {
+      console.log('Reconnecting...')
+      // Reconnect logic
+    }
+  } else if (connection === 'open') {
+    console.log('Connected! Device shows as "MyWhatsAppClient on Ubuntu"')
+  }
+  
+  if (qr) {
+    console.log('Scan this QR code with WhatsApp')
+    // QR will display "MyWhatsAppClient" as the client name
+  }
+})
+
+sock.ev.on('creds.update', saveCreds)
+```
+
+## Best Practices
+
+1. **Use descriptive names**: Choose browser names that identify your application
+   ```typescript
+   browser: Browsers.ubuntu('MyCompanyBot')
+   ```
+
+2. **Match your deployment**: Use `appropriate()` for automatic OS detection
+   ```typescript
+   browser: Browsers.appropriate('MyApp')
+   ```
+
+3. **Desktop for history**: Use desktop configurations when full history is needed
+   ```typescript
+   browser: Browsers.macOS('Desktop')
+   syncFullHistory: true
+   ```
+
+4. **Consistent branding**: Keep the same browser name across reconnections
+   ```typescript
+   const APP_NAME = 'MyApp'
+   browser: Browsers.ubuntu(APP_NAME)
+   ```
+
+## Source Code Reference
+
+From `src/Utils/browser-utils.ts:19-26`:
+
+```typescript
+export const Browsers: BrowsersMap = {
+  ubuntu: browser => ['Ubuntu', browser, '22.04.4'],
+  macOS: browser => ['Mac OS', browser, '14.4.1'],
+  baileys: browser => ['Baileys', browser, '6.5.0'],
+  windows: browser => ['Windows', browser, '10.0.22631'],
+  appropriate: browser => [PLATFORM_MAP[platform()] || 'Ubuntu', browser, release()]
+}
+```
+
+## See Also
+
+- [makeWASocket](/api/makewasocket) - Main socket creation function
+- [SocketConfig](/api/socket-config) - Complete socket configuration
+- [WABrowserDescription Type](https://github.com/WhiskeySockets/Baileys/blob/master/src/Types/Socket.ts#L11) - Type definition

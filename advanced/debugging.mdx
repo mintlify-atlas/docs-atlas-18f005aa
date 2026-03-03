@@ -1,0 +1,620 @@
+---
+title: Debugging & Troubleshooting
+description: Enable debug logging, troubleshoot issues, and understand Baileys internals
+---
+
+Effective debugging is crucial when working with the WhatsApp protocol. This guide covers logging configuration, common issues, and troubleshooting strategies.
+
+## Logging Configuration
+
+Baileys uses [Pino](https://github.com/pinojs/pino) for logging. Configure the logger when creating a socket.
+
+### Log Levels
+
+From least to most verbose:
+
+- `fatal` - Only fatal errors
+- `error` - Error messages
+- `warn` - Warnings
+- `info` - Informational messages (default)
+- `debug` - Debug information, unhandled messages
+- `trace` - Full protocol traces, XML representations
+
+### Basic Configuration
+
+```typescript
+import makeWASocket from '@whiskeysockets/baileys'
+import P from 'pino'
+
+const sock = makeWASocket({
+    logger: P({ level: 'debug' })
+})
+```
+
+### Pretty Printing
+
+For human-readable console output:
+
+```typescript
+import P from 'pino'
+
+const logger = P({
+    level: 'debug',
+    transport: {
+        target: 'pino-pretty',
+        options: {
+            colorize: true,
+            translateTime: 'HH:MM:ss',
+            ignore: 'pid,hostname'
+        }
+    }
+})
+
+const sock = makeWASocket({ logger })
+```
+
+Install pino-pretty:
+```bash
+npm install pino-pretty
+```
+
+### Logging to File
+
+From `Example/example.ts:7-23`:
+
+```typescript
+import P from 'pino'
+
+const logger = P({
+    level: 'trace',
+    transport: {
+        targets: [
+            {
+                target: 'pino-pretty',
+                options: { colorize: true },
+                level: 'trace'
+            },
+            {
+                target: 'pino/file',
+                options: { destination: './wa-logs.txt' },
+                level: 'trace'
+            }
+        ]
+    }
+})
+
+const sock = makeWASocket({ logger })
+```
+
+This logs to both console (pretty) and file (raw JSON).
+
+### Custom Logger
+
+Implement the logger interface:
+
+```typescript
+import type { ILogger } from '@whiskeysockets/baileys'
+
+class CustomLogger implements ILogger {
+    level = 'debug'
+    
+    child(obj: Record<string, unknown>): ILogger {
+        return this
+    }
+    
+    trace(obj: unknown, msg?: string): void {
+        console.log('[TRACE]', msg, obj)
+    }
+    
+    debug(obj: unknown, msg?: string): void {
+        console.log('[DEBUG]', msg, obj)
+    }
+    
+    info(obj: unknown, msg?: string): void {
+        console.log('[INFO]', msg, obj)
+    }
+    
+    warn(obj: unknown, msg?: string): void {
+        console.warn('[WARN]', msg, obj)
+    }
+    
+    error(obj: unknown, msg?: string): void {
+        console.error('[ERROR]', msg, obj)
+    }
+}
+
+const sock = makeWASocket({ 
+    logger: new CustomLogger() 
+})
+```
+
+## Debug Output
+
+### Unhandled Messages
+
+With debug logging enabled, Baileys logs unhandled protocol messages:
+
+```json
+{
+    "unhandled": true,
+    "msgId": "some-message-id",
+    "fromMe": false,
+    "frame": {
+        "tag": "notification",
+        "attrs": { "type": "battery" },
+        "content": [ ... ]
+    },
+    "msg": "communication recv"
+}
+```
+
+These indicate messages you might want to handle with custom callbacks.
+
+### XML Trace Output
+
+With `trace` level, see binary nodes as XML:
+
+```json
+{
+    "xml": "<iq id='1' type='get' xmlns='encrypt'><count/></iq>",
+    "msg": "xml send"
+}
+
+{
+    "xml": "<iq id='1' type='result'><count value='5'/></iq>",
+    "msg": "recv xml"
+}
+```
+
+From `src/Socket/socket.ts:146-148`:
+
+```typescript
+const sendNode = (frame: BinaryNode) => {
+    if (logger.level === 'trace') {
+        logger.trace({ xml: binaryNodeToString(frame), msg: 'xml send' })
+    }
+    // ...
+}
+```
+
+## Common Issues
+
+### Connection Issues
+
+#### QR Code Timeout
+
+**Symptom**: QR code expires before scanning
+
+```typescript
+// Increase QR timeout
+const sock = makeWASocket({
+    qrTimeout: 60_000  // 60 seconds (default: 60s)
+})
+```
+
+#### Connection Closed
+
+**Symptom**: `DisconnectReason.connectionClosed`
+
+```typescript
+sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update
+    if (connection === 'close') {
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode
+        
+        console.log('Disconnect reason:', statusCode)
+        console.log('Error:', lastDisconnect?.error)
+        
+        // Check if should reconnect
+        if (statusCode !== DisconnectReason.loggedOut) {
+            // Reconnect
+        }
+    }
+})
+```
+
+**Common causes**:
+- Network interruption
+- Server restart
+- WebSocket timeout
+
+**Solution**: Implement automatic reconnection.
+
+#### Multi-Device Not Joined
+
+**Symptom**: `DisconnectReason.multideviceMismatch`
+
+```typescript
+sock.ws.on('CB:ib,,downgrade_webclient', () => {
+    console.error('Multi-device beta not joined on phone')
+})
+```
+
+**Solution**: Enable multi-device on your WhatsApp mobile app.
+
+### Authentication Issues
+
+#### Logged Out
+
+**Symptom**: `DisconnectReason.loggedOut`
+
+```typescript
+if (statusCode === DisconnectReason.loggedOut) {
+    console.log('Session expired, need to re-authenticate')
+    // Delete auth state and start fresh
+}
+```
+
+**Causes**:
+- Logged out from phone
+- Session expired
+- Invalid credentials
+
+**Solution**: Delete auth folder and re-authenticate.
+
+#### Pre-Key Issues
+
+**Symptom**: `encrypt/get digest returned no digest node`
+
+```typescript
+// From src/Socket/socket.ts:224-234
+const digestKeyBundle = async (): Promise<void> => {
+    const res = await query({
+        tag: 'iq',
+        attrs: { to: S_WHATSAPP_NET, type: 'get', xmlns: 'encrypt' },
+        content: [{ tag: 'digest', attrs: {} }]
+    })
+    const digestNode = getBinaryNodeChild(res, 'digest')
+    if (!digestNode) {
+        await uploadPreKeys()
+        throw new Error('encrypt/get digest returned no digest node')
+    }
+}
+```
+
+**Solution**: Pre-keys are automatically re-uploaded. Ensure auth state is persistent.
+
+### Message Issues
+
+#### Message Send Failures
+
+**Enable getMessage for retries**:
+
+```typescript
+import { makeInMemoryStore } from '@whiskeysockets/baileys'
+
+const store = makeInMemoryStore({})
+store.readFromFile('./baileys_store.json')
+
+const sock = makeWASocket({
+    getMessage: async (key) => {
+        const msg = await store.loadMessage(key.remoteJid!, key.id!)
+        return msg?.message || undefined
+    }
+})
+
+store.bind(sock.ev)
+```
+
+**Why it's needed**: Baileys needs to retrieve messages for retry logic and poll vote decryption.
+
+#### Poll Updates Not Decrypting
+
+**Symptom**: Poll votes show as encrypted
+
+```typescript
+sock.ev.on('messages.update', async (updates) => {
+    for (const { key, update } of updates) {
+        if (update.pollUpdates) {
+            // Need original poll creation message
+            const pollCreation = await getMessage(key)
+            if (pollCreation) {
+                const votes = getAggregateVotesInPollMessage({
+                    message: pollCreation,
+                    pollUpdates: update.pollUpdates
+                })
+                console.log('Poll votes:', votes)
+            }
+        }
+    }
+})
+```
+
+**Solution**: Implement `getMessage` to retrieve the original poll message.
+
+### Performance Issues
+
+#### High Memory Usage
+
+**Cause**: Storing entire chat history in memory
+
+```typescript
+// Don't use in-memory store for production
+const store = makeInMemoryStore({})  // Stores everything in RAM!
+```
+
+**Solution**: Implement custom storage backend (database):
+
+```typescript
+const sock = makeWASocket({
+    getMessage: async (key) => {
+        // Fetch from database
+        return await db.messages.findOne({ 
+            remoteJid: key.remoteJid, 
+            id: key.id 
+        })
+    }
+})
+
+// Store messages in database
+sock.ev.on('messages.upsert', async ({ messages }) => {
+    await db.messages.insertMany(messages)
+})
+```
+
+#### Slow Message Processing
+
+**Problem**: Blocking event handlers
+
+```typescript
+// Bad: Blocks event loop
+sock.ev.on('messages.upsert', ({ messages }) => {
+    for (const msg of messages) {
+        processMessageSynchronously(msg)  // Blocks!
+    }
+})
+
+// Good: Non-blocking
+sock.ev.on('messages.upsert', async ({ messages }) => {
+    // Queue for background processing
+    await messageQueue.addBatch(messages)
+})
+```
+
+## Debugging Techniques
+
+### Inspect Binary Nodes
+
+```typescript
+import { binaryNodeToString } from '@whiskeysockets/baileys'
+import type { BinaryNode } from '@whiskeysockets/baileys'
+
+sock.ws.on('CB:iq', (node: BinaryNode) => {
+    console.log('Node structure:', JSON.stringify(node, null, 2))
+    console.log('XML representation:', binaryNodeToString(node))
+})
+```
+
+### Trace WebSocket Events
+
+```typescript
+import { WebSocketClient } from '@whiskeysockets/baileys'
+
+const originalEmit = sock.ws.emit
+sock.ws.emit = function (event: string, ...args: any[]) {
+    if (event.startsWith('CB:')) {
+        console.log('Event:', event, 'Args:', args)
+    }
+    return originalEmit.call(this, event, ...args)
+}
+```
+
+### Monitor Connection State
+
+```typescript
+sock.ev.on('connection.update', (update) => {
+    console.log('Connection update:', {
+        connection: update.connection,
+        receivedPendingNotifications: update.receivedPendingNotifications,
+        isNewLogin: update.isNewLogin,
+        qr: update.qr ? 'present' : 'none',
+        lastDisconnect: update.lastDisconnect?.error?.message
+    })
+})
+```
+
+### Debug Auth State
+
+```typescript
+import { BufferJSON } from '@whiskeysockets/baileys'
+import fs from 'fs'
+
+// Inspect auth state
+const authState = JSON.parse(
+    fs.readFileSync('./auth_info/creds.json', 'utf-8'),
+    BufferJSON.reviver
+)
+
+console.log('Registered:', authState.registered)
+console.log('Phone:', authState.me?.id)
+console.log('Pre-key ID:', authState.nextPreKeyId)
+console.log('Signed pre-key ID:', authState.signedPreKey?.keyId)
+```
+
+## Error Handling
+
+### Global Error Handler
+
+```typescript
+sock.ev.on('connection.update', (update) => {
+    if (update.lastDisconnect?.error) {
+        const error = update.lastDisconnect.error
+        
+        if (error instanceof Boom) {
+            const statusCode = error.output?.statusCode
+            const errorData = error.data
+            
+            console.error('Boom error:', {
+                statusCode,
+                message: error.message,
+                data: errorData
+            })
+            
+            // Handle specific errors
+            switch (statusCode) {
+                case DisconnectReason.badSession:
+                    console.log('Bad session, deleting auth state')
+                    // Delete and re-auth
+                    break
+                case DisconnectReason.connectionClosed:
+                    console.log('Connection closed, reconnecting...')
+                    // Reconnect
+                    break
+                case DisconnectReason.loggedOut:
+                    console.log('Logged out, need manual re-auth')
+                    // Don't reconnect
+                    break
+            }
+        } else {
+            console.error('Unknown error:', error)
+        }
+    }
+})
+```
+
+### Catch Unhandled Rejections
+
+```typescript
+process.on('unhandledRejection', (error) => {
+    console.error('Unhandled rejection:', error)
+})
+
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught exception:', error)
+})
+```
+
+## Diagnostic Tools
+
+### Check Pre-Keys on Server
+
+```typescript
+const checkPreKeys = async () => {
+    const result = await sock.query({
+        tag: 'iq',
+        attrs: {
+            xmlns: 'encrypt',
+            type: 'get',
+            to: 's.whatsapp.net'
+        },
+        content: [{ tag: 'count', attrs: {} }]
+    })
+    
+    const count = result.content?.[0]?.attrs?.value
+    console.log('Pre-keys on server:', count)
+}
+```
+
+### Verify Device Registration
+
+```typescript
+const checkRegistration = () => {
+    console.log('Registered:', sock.authState.creds.registered)
+    console.log('Phone number:', sock.authState.creds.me?.id)
+    console.log('Device ID:', sock.authState.creds.me?.device)
+}
+```
+
+### Test Message Send
+
+```typescript
+const testSend = async () => {
+    try {
+        const result = await sock.sendMessage(
+            'test@s.whatsapp.net',
+            { text: 'Test message' }
+        )
+        console.log('Send successful:', result)
+    } catch (error) {
+        console.error('Send failed:', error)
+    }
+}
+```
+
+## Production Recommendations
+
+<Warning>
+**Never log sensitive data in production**:
+- Pre-keys, session keys
+- Message content
+- User phone numbers
+</Warning>
+
+```typescript
+// Production logger
+const logger = P({
+    level: process.env.NODE_ENV === 'production' ? 'warn' : 'debug',
+    redact: {
+        paths: [
+            'creds.noiseKey',
+            'creds.signedPreKey',
+            'creds.advSecretKey',
+            'keys.*'
+        ],
+        remove: true
+    }
+})
+```
+
+<Note>
+**Monitor these metrics**:
+- Connection uptime
+- Message send success rate
+- Pre-key count on server
+- Memory usage
+- Event processing latency
+</Note>
+
+## Useful Commands
+
+### Clear Auth State
+
+```bash
+rm -rf auth_info_baileys/
+```
+
+### View Logs in Real-Time
+
+```bash
+tail -f wa-logs.txt | pino-pretty
+```
+
+### Search Logs
+
+```bash
+grep "connection.update" wa-logs.txt | pino-pretty
+```
+
+## Getting Help
+
+### Gather Debug Info
+
+When reporting issues, include:
+
+1. **Baileys version**: `npm list @whiskeysockets/baileys`
+2. **Node version**: `node --version`
+3. **Logs**: With debug level enabled
+4. **Connection state**: During the issue
+5. **Reproduction steps**: Minimal code to reproduce
+
+### Example Debug Log
+
+```typescript
+const logger = P({
+    level: 'trace',
+    transport: {
+        target: 'pino/file',
+        options: { destination: './debug.log' }
+    }
+})
+
+const sock = makeWASocket({ logger })
+
+// Reproduce the issue, then share debug.log
+```
+
+## Next Steps
+
+- [Custom Functionality](/advanced/custom-functionality) - Building custom handlers
+- [WebSocket Events](/advanced/websocket-events) - Event callback patterns
+- [Protocol Details](/advanced/protocol-details) - Understanding the protocol

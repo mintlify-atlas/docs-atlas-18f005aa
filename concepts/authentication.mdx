@@ -1,0 +1,288 @@
+---
+title: Authentication
+description: Understanding Baileys authentication system, credentials, and session management
+---
+
+## Overview
+
+Baileys uses WhatsApp's multi-device protocol for authentication. The library manages authentication state through credentials and cryptographic keys that enable secure communication with WhatsApp servers.
+
+## Authentication State
+
+The authentication state consists of two primary components:
+
+### 1. Credentials (`AuthenticationCreds`)
+
+Credentials contain identity information and cryptographic material:
+
+```typescript
+type AuthenticationCreds = {
+  // Signal protocol keys
+  readonly signedIdentityKey: KeyPair
+  readonly signedPreKey: SignedKeyPair
+  readonly registrationId: number
+  readonly noiseKey: KeyPair
+  readonly pairingEphemeralKeyPair: KeyPair
+  
+  // Account information
+  advSecretKey: string
+  me?: Contact
+  account?: proto.IADVSignedDeviceIdentity
+  
+  // Session state
+  registered: boolean
+  pairingCode: string | undefined
+  firstUnuploadedPreKeyId: number
+  nextPreKeyId: number
+  accountSyncCounter: number
+  
+  // Settings
+  accountSettings: AccountSettings
+  processedHistoryMessages: MinimalMessage[]
+}
+```
+
+### 2. Signal Keys (`SignalKeyStore`)
+
+The key store manages cryptographic keys used for message encryption:
+
+```typescript
+type SignalKeyStore = {
+  get<T extends keyof SignalDataTypeMap>(
+    type: T, 
+    ids: string[]
+  ): Promise<{ [id: string]: SignalDataTypeMap[T] }>
+  
+  set(data: SignalDataSet): Promise<void>
+  
+  clear?(): Promise<void>
+}
+```
+
+**Key types stored:**
+- `pre-key` - Pre-keys for establishing sessions
+- `session` - Active session data
+- `sender-key` - Group encryption keys
+- `app-state-sync-key` - App state synchronization keys
+- `identity-key` - Identity verification keys
+
+## Using Multi-File Auth State
+
+Baileys provides `useMultiFileAuthState` for file-based credential storage:
+
+```typescript
+import { useMultiFileAuthState } from '@whiskeysockets/baileys'
+
+const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
+
+const sock = makeWASocket({ 
+  auth: state,
+  printQRInTerminal: true 
+})
+
+// Save credentials when updated
+sock.ev.on('creds.update', saveCreds)
+```
+
+### How It Works
+
+The multi-file auth state:
+
+1. **Stores credentials** in `creds.json`
+2. **Stores keys** in separate files: `{type}-{id}.json`
+3. **Uses file locks** to prevent race conditions
+4. **Serializes buffers** using `BufferJSON` for safe JSON storage
+
+From `src/Utils/use-multi-file-auth-state.ts:33`:
+
+```typescript
+export const useMultiFileAuthState = async (
+  folder: string
+): Promise<{ 
+  state: AuthenticationState; 
+  saveCreds: () => Promise<void> 
+}> => {
+  // Create folder if it doesn't exist
+  const folderInfo = await stat(folder).catch(() => {})
+  if (!folderInfo) {
+    await mkdir(folder, { recursive: true })
+  }
+  
+  // Load or initialize credentials
+  const creds: AuthenticationCreds = 
+    (await readData('creds.json')) || initAuthCreds()
+  
+  return {
+    state: {
+      creds,
+      keys: {
+        get: async (type, ids) => { /* ... */ },
+        set: async (data) => { /* ... */ }
+      }
+    },
+    saveCreds: async () => writeData(creds, 'creds.json')
+  }
+}
+```
+
+<Warning>
+The multi-file auth state is suitable for bots and small-scale applications, but **not recommended for production systems**. Implement a database-backed auth state for production use.
+</Warning>
+
+## QR Code Authentication
+
+Connect by scanning a QR code with WhatsApp:
+
+```typescript
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+  printQRInTerminal: true,
+  browser: Browsers.ubuntu('My App')
+})
+```
+
+The QR code will be printed to the terminal. Scan it with WhatsApp to authenticate.
+
+## Pairing Code Authentication
+
+Connect using a pairing code instead of QR:
+
+```typescript
+const sock = makeWASocket({
+  printQRInTerminal: false // Must be false for pairing code
+})
+
+if (!sock.authState.creds.registered) {
+  const phoneNumber = '1234567890' // No +, (), or -
+  const code = await sock.requestPairingCode(phoneNumber)
+  console.log(`Pairing code: ${code}`)
+}
+```
+
+<Info>
+The phone number must include the country code and contain only digits (no `+`, `()`, or `-`).
+</Info>
+
+## Initializing Credentials
+
+When no credentials exist, Baileys generates new ones using `initAuthCreds()`:
+
+From `src/Utils/auth-utils.ts:346`:
+
+```typescript
+export const initAuthCreds = (): AuthenticationCreds => {
+  const identityKey = Curve.generateKeyPair()
+  return {
+    noiseKey: Curve.generateKeyPair(),
+    pairingEphemeralKeyPair: Curve.generateKeyPair(),
+    signedIdentityKey: identityKey,
+    signedPreKey: signedKeyPair(identityKey, 1),
+    registrationId: generateRegistrationId(),
+    advSecretKey: randomBytes(32).toString('base64'),
+    processedHistoryMessages: [],
+    nextPreKeyId: 1,
+    firstUnuploadedPreKeyId: 1,
+    accountSyncCounter: 0,
+    accountSettings: { unarchiveChats: false },
+    registered: false,
+    pairingCode: undefined,
+    lastPropHash: undefined,
+    routingInfo: undefined
+  }
+}
+```
+
+## Caching Signal Keys
+
+For better performance, use `makeCacheableSignalKeyStore` to cache frequently accessed keys:
+
+```typescript
+import { makeCacheableSignalKeyStore } from '@whiskeysockets/baileys'
+
+const { state, saveCreds } = await useMultiFileAuthState('auth_info')
+
+const sock = makeWASocket({
+  auth: {
+    creds: state.creds,
+    keys: makeCacheableSignalKeyStore(state.keys, logger)
+  }
+})
+```
+
+This caches keys in memory (default TTL: 5 minutes) to reduce file I/O operations.
+
+## Key Management
+
+<Warning>
+**Critical:** When messages are sent/received, Signal sessions update. You **must** save the updated keys (`authState.keys.set()` is called) or messages won't reach recipients and decryption will fail.
+</Warning>
+
+The `useMultiFileAuthState` function automatically handles this, but custom implementations must be careful:
+
+```typescript
+// Custom key store implementation
+const customKeyStore: SignalKeyStore = {
+  async get(type, ids) {
+    // Load keys from your database
+    return await db.getKeys(type, ids)
+  },
+  
+  async set(data) {
+    // CRITICAL: Save all updated keys immediately
+    await db.saveKeys(data)
+  }
+}
+```
+
+## Account Settings
+
+Credentials include account-level settings:
+
+```typescript
+type AccountSettings = {
+  /** Unarchive chats when a new message is received */
+  unarchiveChats: boolean
+  
+  /** Default disappearing message mode for new conversations */
+  defaultDisappearingMode?: {
+    ephemeralExpiration?: number
+    ephemeralSettingTimestamp?: number
+  }
+}
+```
+
+## Best Practices
+
+<Tip>
+**Production Implementation Tips:**
+
+1. **Use a database** - Store credentials and keys in PostgreSQL, MongoDB, or similar
+2. **Encrypt sensitive data** - Encrypt credentials at rest
+3. **Handle key updates** - Always save keys when `authState.keys.set()` is called
+4. **Use caching** - Implement `makeCacheableSignalKeyStore` for performance
+5. **Backup regularly** - Auth state loss requires re-authentication
+6. **Monitor registration** - Track `registered` status to detect logout events
+</Tip>
+
+## BufferJSON Serialization
+
+When storing auth state as JSON, use the `BufferJSON` utility for proper Buffer serialization:
+
+```typescript
+import { BufferJSON } from '@whiskeysockets/baileys'
+
+// Serializing
+const json = JSON.stringify(creds, BufferJSON.replacer)
+
+// Deserializing  
+const creds = JSON.parse(json, BufferJSON.reviver)
+```
+
+This ensures Buffers and Uint8Arrays are correctly serialized and restored.
+
+## See Also
+
+- [Connection Lifecycle](/concepts/connection) - Managing socket connections
+- [Events](/concepts/events) - Handling authentication events
+- [WhatsApp IDs](/concepts/whatsapp-ids) - Understanding JID format

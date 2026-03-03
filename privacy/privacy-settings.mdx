@@ -1,0 +1,157 @@
+---
+title: Privacy Settings
+description: Fetch and update all WhatsApp privacy settings including last seen, online status, profile picture, status, read receipts, and groups using Baileys
+---
+
+## Fetch Privacy Settings
+
+Retrieve all current privacy settings for your account:
+
+```ts
+const privacySettings = await sock.fetchPrivacySettings(true)
+console.log('privacy settings: ' + privacySettings)
+```
+
+<Info>
+Pass `true` to force refresh the settings, or `false` to use cached values. The function is implemented in `src/Socket/chats.ts:119-134`.
+</Info>
+
+## Privacy Value Types
+
+Most privacy settings accept these values:
+
+- `'all'` - Everyone can see
+- `'contacts'` - Only your contacts can see
+- `'contact_blacklist'` - Contacts except blocked ones
+- `'none'` - Nobody can see
+
+## Update Last Seen Privacy
+
+Control who can see when you were last online:
+
+```ts
+const value = 'all' // 'contacts' | 'contact_blacklist' | 'none'
+await sock.updateLastSeenPrivacy(value)
+```
+
+## Update Online Privacy
+
+Control who can see when you're online:
+
+```ts
+const value = 'all' // 'match_last_seen'
+await sock.updateOnlinePrivacy(value)
+```
+
+<Note>
+Online privacy has two options: `'all'` or `'match_last_seen'` (same as last seen setting).
+</Note>
+
+## Update Profile Picture Privacy
+
+Control who can see your profile picture:
+
+```ts
+const value = 'all' // 'contacts' | 'contact_blacklist' | 'none'
+await sock.updateProfilePicturePrivacy(value)
+```
+
+## Update Status Privacy
+
+Control who can see your WhatsApp status/about:
+
+```ts
+const value = 'all' // 'contacts' | 'contact_blacklist' | 'none'
+await sock.updateStatusPrivacy(value)
+```
+
+## Update Read Receipts Privacy
+
+Control whether you send read receipts (blue ticks):
+
+```ts
+const value = 'all' // 'none'
+await sock.updateReadReceiptsPrivacy(value)
+```
+
+<Warning>
+Disabling read receipts (`'none'`) also prevents you from seeing others' read receipts.
+</Warning>
+
+## Update Groups Add Privacy
+
+Control who can add you to groups:
+
+```ts
+const value = 'all' // 'contacts' | 'contact_blacklist'
+await sock.updateGroupsAddPrivacy(value)
+```
+
+<Info>
+Groups add privacy only supports `'all'`, `'contacts'`, or `'contact_blacklist'`. The `'none'` option is not available.
+</Info>
+
+## Update Default Disappearing Mode
+
+Set the default duration for disappearing messages in new chats:
+
+### Supported Times
+
+| Time   | Seconds    |
+|--------|------------|
+| Remove | 0          |
+| 24h    | 86,400     |
+| 7d     | 604,800    |
+| 90d    | 7,776,000  |
+
+### Example
+
+```ts
+const ephemeral = 86400 // 24 hours in seconds
+await sock.updateDefaultDisappearingMode(ephemeral)
+
+// Disable default disappearing mode
+await sock.updateDefaultDisappearingMode(0)
+```
+
+<Tip>
+The default is 7 days (604,800 seconds). Use `WA_DEFAULT_EPHEMERAL` constant which equals `7 * 24 * 60 * 60` seconds.
+</Tip>
+
+## Privacy Functions Reference
+
+All privacy update functions are implemented in `src/Socket/chats.ts`:
+
+| Function | Line | Description |
+|----------|------|-------------|
+| `fetchPrivacySettings` | 119-134 | Fetch all privacy settings |
+| `updateLastSeenPrivacy` | 168-170 | Update last seen visibility |
+| `updateOnlinePrivacy` | 172-174 | Update online status visibility |
+| `updateProfilePicturePrivacy` | 176-178 | Update profile picture visibility |
+| `updateStatusPrivacy` | 180-182 | Update status/about visibility |
+| `updateReadReceiptsPrivacy` | 184-186 | Update read receipt settings |
+| `updateGroupsAddPrivacy` | 188-190 | Update who can add to groups |
+| `updateDefaultDisappearingMode` | 192-209 | Update default disappearing messages |
+
+## Complete Example
+
+```ts
+// Fetch current settings
+const settings = await sock.fetchPrivacySettings(true)
+console.log('Current privacy settings:', settings)
+
+// Update multiple privacy settings
+await sock.updateLastSeenPrivacy('contacts')
+await sock.updateOnlinePrivacy('match_last_seen')
+await sock.updateProfilePicturePrivacy('contacts')
+await sock.updateStatusPrivacy('contacts')
+await sock.updateReadReceiptsPrivacy('all')
+await sock.updateGroupsAddPrivacy('contacts')
+
+// Set default disappearing messages to 24 hours
+await sock.updateDefaultDisappearingMode(86400)
+```
+
+<Note>
+All privacy functions use the internal `privacyQuery` helper which sends IQ queries to WhatsApp servers with the appropriate XML namespace.
+</Note>

@@ -1,0 +1,193 @@
+---
+title: Creating Groups
+description: Learn how to create WhatsApp groups and perform initial setup with Baileys
+---
+
+## Overview
+
+Baileys provides simple methods to create WhatsApp groups programmatically. To modify group properties, you need to be a group admin.
+
+## Creating a Group
+
+Use the `groupCreate` method to create a new WhatsApp group with a title and initial participants.
+
+### Function Signature
+
+```typescript
+groupCreate(subject: string, participants: string[]): Promise<GroupMetadata>
+```
+
+**Parameters:**
+- `subject` - The name/title of the group
+- `participants` - Array of participant JIDs (must be in format `number@s.whatsapp.net`)
+
+**Returns:** A `GroupMetadata` object containing the newly created group's information
+
+### Basic Example
+
+<Steps>
+  <Step title="Create the group">
+    ```typescript
+    const group = await sock.groupCreate(
+      'My Fab Group',
+      ['1234@s.whatsapp.net', '4564@s.whatsapp.net']
+    )
+    ```
+  </Step>
+
+  <Step title="Access group information">
+    ```typescript
+    console.log('created group with id: ' + group.id)
+    ```
+
+    The returned `GroupMetadata` object contains:
+    - `id` - The group JID
+    - `subject` - The group name
+    - `participants` - Array of group participants
+    - `creation` - Unix timestamp of creation
+    - And more metadata fields
+  </Step>
+
+  <Step title="Send a welcome message">
+    ```typescript
+    await sock.sendMessage(group.id, { text: 'hello there' })
+    ```
+  </Step>
+</Steps>
+
+### Complete Example
+
+```typescript
+import makeWASocket from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+  // your config
+})
+
+const createGroupExample = async () => {
+  try {
+    // Create group with initial participants
+    const group = await sock.groupCreate(
+      'My Fab Group',
+      ['1234@s.whatsapp.net', '4564@s.whatsapp.net']
+    )
+
+    console.log('Group created successfully!')
+    console.log('Group ID:', group.id)
+    console.log('Group Name:', group.subject)
+    console.log('Participants:', group.participants.length)
+
+    // Send welcome message
+    await sock.sendMessage(group.id, {
+      text: 'Welcome to the group! 👋'
+    })
+  } catch (error) {
+    console.error('Failed to create group:', error)
+  }
+}
+```
+
+## Group Metadata Structure
+
+The `GroupMetadata` interface returned by `groupCreate` contains:
+
+```typescript
+interface GroupMetadata {
+  id: string                          // Group JID
+  subject: string                     // Group name
+  owner: string | undefined           // Creator JID
+  creation?: number                   // Creation timestamp
+  participants: GroupParticipant[]    // List of participants
+  size?: number                       // Number of participants
+  desc?: string                       // Group description
+  restrict?: boolean                  // Locked settings (admin only)
+  announce?: boolean                  // Announcement mode (admin only messages)
+  memberAddMode?: boolean             // Members can add participants
+  joinApprovalMode?: boolean          // Approval required to join
+  ephemeralDuration?: number          // Disappearing messages duration
+  linkedParent?: string               // Parent community JID (if applicable)
+  isCommunity?: boolean               // Is this a community
+  // ... and more fields
+}
+```
+
+## Best Practices
+
+<Note>
+  **Participant Format**: Always ensure participant JIDs are in the correct format: `number@s.whatsapp.net`
+</Note>
+
+<Warning>
+  **Minimum Participants**: WhatsApp may require a minimum number of participants to create a group. Always include at least 1 other participant besides yourself.
+</Warning>
+
+<Info>
+  **Error Handling**: The `groupCreate` method will throw an error if the operation fails. Always wrap it in a try-catch block.
+</Info>
+
+### Tips
+
+1. **Validate phone numbers** before adding them as participants
+2. **Check if numbers are registered** on WhatsApp using `onWhatsApp` method
+3. **Handle errors gracefully** - some numbers may not be valid WhatsApp accounts
+4. **Store the group ID** for future operations like sending messages or updating settings
+
+## Common Use Cases
+
+### Creating a group with verified participants
+
+```typescript
+const createGroupWithVerification = async (
+  groupName: string,
+  phoneNumbers: string[]
+) => {
+  // Verify which numbers are on WhatsApp
+  const jids = phoneNumbers.map(num => `${num}@s.whatsapp.net`)
+  const verified = await sock.onWhatsApp(...jids)
+
+  // Filter to only verified numbers
+  const validParticipants = verified
+    .filter(result => result.exists)
+    .map(result => result.jid)
+
+  if (validParticipants.length === 0) {
+    throw new Error('No valid WhatsApp numbers found')
+  }
+
+  // Create the group
+  const group = await sock.groupCreate(groupName, validParticipants)
+  return group
+}
+```
+
+### Creating a group and configuring initial settings
+
+```typescript
+const createConfiguredGroup = async () => {
+  // Create the group
+  const group = await sock.groupCreate(
+    'My Group',
+    ['1234@s.whatsapp.net', '5678@s.whatsapp.net']
+  )
+
+  // Set description
+  await sock.groupUpdateDescription(
+    group.id,
+    'This is our group for project discussions'
+  )
+
+  // Enable announcement mode (only admins can send messages)
+  await sock.groupSettingUpdate(group.id, 'announcement')
+
+  // Lock settings (only admins can modify)
+  await sock.groupSettingUpdate(group.id, 'locked')
+
+  return group
+}
+```
+
+## Related Methods
+
+- [Managing Participants](/groups/managing-participants) - Add, remove, promote, and demote members
+- [Group Settings](/groups/group-settings) - Configure announcement mode, locked settings, and more
+- [Group Metadata](/groups/group-metadata) - Fetch and understand group information

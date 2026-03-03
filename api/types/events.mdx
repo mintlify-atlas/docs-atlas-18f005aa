@@ -1,0 +1,601 @@
+---
+title: Event Types
+description: BaileysEventMap and event emitter types for handling WhatsApp events
+---
+
+Baileys uses an event-driven architecture. All socket events are typed through the `BaileysEventMap` interface.
+
+## BaileysEventEmitter
+
+The event emitter interface used by Baileys sockets.
+
+<ResponseField name="on" type="function" required>
+  Register an event listener
+  
+  ```typescript
+  on<T extends keyof BaileysEventMap>(
+    event: T, 
+    listener: (arg: BaileysEventMap[T]) => void
+  ): void
+  ```
+</ResponseField>
+
+<ResponseField name="off" type="function" required>
+  Remove an event listener
+  
+  ```typescript
+  off<T extends keyof BaileysEventMap>(
+    event: T, 
+    listener: (arg: BaileysEventMap[T]) => void
+  ): void
+  ```
+</ResponseField>
+
+<ResponseField name="removeAllListeners" type="function" required>
+  Remove all listeners for an event
+  
+  ```typescript
+  removeAllListeners<T extends keyof BaileysEventMap>(event: T): void
+  ```
+</ResponseField>
+
+<ResponseField name="emit" type="function" required>
+  Emit an event
+  
+  ```typescript
+  emit<T extends keyof BaileysEventMap>(
+    event: T, 
+    arg: BaileysEventMap[T]
+  ): boolean
+  ```
+</ResponseField>
+
+## BaileysEventMap
+
+Complete mapping of all events to their payload types.
+
+### Connection Events
+
+<ResponseField name="connection.update" type="Partial<ConnectionState>">
+  Fired when connection state changes (WS opened, closed, connecting, etc.)
+  
+  ```typescript
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update
+    if (connection === 'close') {
+      // Handle disconnection
+    }
+  })
+  ```
+</ResponseField>
+
+### Authentication Events
+
+<ResponseField name="creds.update" type="Partial<AuthenticationCreds>">
+  Fired when credentials are updated (keys, identity, etc.)
+  
+  ```typescript
+  sock.ev.on('creds.update', saveCreds)
+  ```
+</ResponseField>
+
+### Message Events
+
+<ResponseField name="messages.upsert" type="object">
+  New messages received or synced from history
+  
+  <Expandable title="properties">
+    <ResponseField name="messages" type="WAMessage[]" required>
+      Array of messages
+    </ResponseField>
+    
+    <ResponseField name="type" type="MessageUpsertType" required>
+      - `"notify"`: New message, show notification
+      - `"append"`: Historical message, no notification
+    </ResponseField>
+    
+    <ResponseField name="requestId" type="string">
+      Present if messages were requested from phone due to unavailability
+    </ResponseField>
+  </Expandable>
+  
+  ```typescript
+  sock.ev.on('messages.upsert', ({ messages, type }) => {
+    for (const msg of messages) {
+      if (type === 'notify') {
+        console.log('New message:', msg)
+      }
+    }
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="messages.update" type="WAMessageUpdate[]">
+  Updates to existing messages (delivery receipts, edits, etc.)
+  
+  ```typescript
+  sock.ev.on('messages.update', (updates) => {
+    for (const { key, update } of updates) {
+      // update.status: delivered, read, etc.
+    }
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="messages.delete" type="object">
+  Messages deleted by user
+  
+  ```typescript
+  // Specific messages
+  { keys: WAMessageKey[] }
+  
+  // All messages in a chat
+  { jid: string; all: true }
+  ```
+</ResponseField>
+
+<ResponseField name="messages.reaction" type="array">
+  Reactions added/removed from messages
+  
+  ```typescript
+  Array<{
+    key: WAMessageKey
+    reaction: proto.IReaction
+  }>
+  ```
+  
+  Example:
+  ```typescript
+  sock.ev.on('messages.reaction', (reactions) => {
+    for (const { key, reaction } of reactions) {
+      console.log(`${reaction.text} on message ${key.id}`)
+    }
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="messages.media-update" type="array">
+  Media encryption info updates
+  
+  ```typescript
+  Array<{
+    key: WAMessageKey
+    media?: { ciphertext: Uint8Array; iv: Uint8Array }
+    error?: Boom
+  }>
+  ```
+</ResponseField>
+
+<ResponseField name="message-receipt.update" type="MessageUserReceiptUpdate[]">
+  Individual user receipts (read, played, etc.)
+  
+  ```typescript
+  sock.ev.on('message-receipt.update', (receipts) => {
+    for (const { key, receipt } of receipts) {
+      console.log(`${receipt.userJid} read at ${receipt.readTimestamp}`)
+    }
+  })
+  ```
+</ResponseField>
+
+### Chat Events
+
+<ResponseField name="chats.upsert" type="Chat[]">
+  New chats created
+  
+  ```typescript
+  sock.ev.on('chats.upsert', (chats) => {
+    console.log(`${chats.length} new chats`)
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="chats.update" type="ChatUpdate[]">
+  Updates to existing chats (name, unread count, etc.)
+  
+  ```typescript
+  sock.ev.on('chats.update', (updates) => {
+    for (const update of updates) {
+      if (update.unreadCount) {
+        console.log(`${update.id}: ${update.unreadCount} unread`)
+      }
+    }
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="chats.delete" type="string[]">
+  Array of chat JIDs that were deleted
+  
+  ```typescript
+  sock.ev.on('chats.delete', (deletedChats) => {
+    console.log('Deleted:', deletedChats)
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="chats.lock" type="object">
+  Chat lock status changed
+  
+  ```typescript
+  { id: string; locked: boolean }
+  ```
+</ResponseField>
+
+### History Sync Events
+
+<ResponseField name="messaging-history.set" type="object">
+  Bulk history sync from phone (reverse chronological order)
+  
+  <Expandable title="properties">
+    <ResponseField name="chats" type="Chat[]" required>
+      Array of chats
+    </ResponseField>
+    
+    <ResponseField name="contacts" type="Contact[]" required>
+      Array of contacts
+    </ResponseField>
+    
+    <ResponseField name="messages" type="WAMessage[]" required>
+      Array of messages
+    </ResponseField>
+    
+    <ResponseField name="lidPnMappings" type="LIDMapping[]">
+      LID to phone number mappings
+    </ResponseField>
+    
+    <ResponseField name="isLatest" type="boolean">
+      Whether this is the latest history batch
+    </ResponseField>
+    
+    <ResponseField name="progress" type="number | null">
+      Sync progress (0-1)
+    </ResponseField>
+    
+    <ResponseField name="syncType" type="proto.HistorySync.HistorySyncType | null">
+      Type of history sync
+    </ResponseField>
+    
+    <ResponseField name="peerDataRequestSessionId" type="string | null">
+      Session ID for peer data request
+    </ResponseField>
+  </Expandable>
+  
+  ```typescript
+  sock.ev.on('messaging-history.set', (history) => {
+    console.log(`Synced ${history.chats.length} chats`)
+    console.log(`Synced ${history.messages.length} messages`)
+    console.log(`Progress: ${history.progress * 100}%`)
+  })
+  ```
+</ResponseField>
+
+### Contact Events
+
+<ResponseField name="contacts.upsert" type="Contact[]">
+  New contacts added
+</ResponseField>
+
+<ResponseField name="contacts.update" type="Partial<Contact>[]">
+  Updates to existing contacts
+</ResponseField>
+
+### Group Events
+
+<ResponseField name="groups.upsert" type="GroupMetadata[]">
+  New groups joined
+</ResponseField>
+
+<ResponseField name="groups.update" type="Partial<GroupMetadata>[]">
+  Updates to group metadata (name, subject, etc.)
+</ResponseField>
+
+<ResponseField name="group-participants.update" type="object">
+  Participant changes in a group
+  
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      Group JID
+    </ResponseField>
+    
+    <ResponseField name="author" type="string" required>
+      Who made the change
+    </ResponseField>
+    
+    <ResponseField name="authorPn" type="string">
+      Author's phone number
+    </ResponseField>
+    
+    <ResponseField name="participants" type="GroupParticipant[]" required>
+      Affected participants
+    </ResponseField>
+    
+    <ResponseField name="action" type="ParticipantAction" required>
+      Action: `'add'`, `'remove'`, `'promote'`, `'demote'`
+    </ResponseField>
+  </Expandable>
+  
+  ```typescript
+  sock.ev.on('group-participants.update', (update) => {
+    console.log(`${update.action} in ${update.id}`)
+    console.log('Participants:', update.participants)
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="group.join-request" type="object">
+  Someone requested to join a group
+  
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      Group JID
+    </ResponseField>
+    
+    <ResponseField name="author" type="string" required>
+      Who approved/rejected
+    </ResponseField>
+    
+    <ResponseField name="authorPn" type="string">
+      Author's phone number
+    </ResponseField>
+    
+    <ResponseField name="participant" type="string" required>
+      Who wants to join
+    </ResponseField>
+    
+    <ResponseField name="participantPn" type="string">
+      Participant's phone number
+    </ResponseField>
+    
+    <ResponseField name="action" type="RequestJoinAction" required>
+      `'create'` or `'revoke'`
+    </ResponseField>
+    
+    <ResponseField name="method" type="RequestJoinMethod" required>
+      How they requested: `'invite_link'`, etc.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="group.member-tag.update" type="object">
+  Labels assigned to group member changed
+  
+  ```typescript
+  {
+    groupId: string
+    participant: string
+    participantAlt?: string
+    label: string
+    messageTimestamp?: number
+  }
+  ```
+</ResponseField>
+
+### Presence Events
+
+<ResponseField name="presence.update" type="object">
+  Contact presence changed (typing, online, etc.)
+  
+  ```typescript
+  {
+    id: string // chat JID
+    presences: { 
+      [participant: string]: PresenceData 
+    }
+  }
+  ```
+  
+  Example:
+  ```typescript
+  sock.ev.on('presence.update', ({ id, presences }) => {
+    for (const [jid, presence] of Object.entries(presences)) {
+      console.log(`${jid} is ${presence.lastKnownPresence}`)
+      // 'unavailable', 'available', 'composing', 'recording', 'paused'
+    }
+  })
+  ```
+</ResponseField>
+
+### Blocklist Events
+
+<ResponseField name="blocklist.set" type="object">
+  Entire blocklist replaced
+  
+  ```typescript
+  { blocklist: string[] }
+  ```
+</ResponseField>
+
+<ResponseField name="blocklist.update" type="object">
+  Blocklist updated incrementally
+  
+  ```typescript
+  {
+    blocklist: string[]
+    type: 'add' | 'remove'
+  }
+  ```
+</ResponseField>
+
+### Call Events
+
+<ResponseField name="call" type="WACallEvent[]">
+  Incoming/outgoing call events
+  
+  ```typescript
+  sock.ev.on('call', (calls) => {
+    for (const call of calls) {
+      console.log(`Call from ${call.from}: ${call.status}`)
+    }
+  })
+  ```
+</ResponseField>
+
+### Label Events
+
+<ResponseField name="labels.edit" type="Label">
+  Label created or edited
+</ResponseField>
+
+<ResponseField name="labels.association" type="object">
+  Label associated/disassociated with item
+  
+  ```typescript
+  {
+    association: LabelAssociation
+    type: 'add' | 'remove'
+  }
+  ```
+</ResponseField>
+
+### Newsletter Events
+
+<ResponseField name="newsletter.reaction" type="object">
+  Reaction on newsletter message
+  
+  ```typescript
+  {
+    id: string
+    server_id: string
+    reaction: { 
+      code?: string
+      count?: number
+      removed?: boolean 
+    }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="newsletter.view" type="object">
+  Newsletter message viewed
+  
+  ```typescript
+  {
+    id: string
+    server_id: string
+    count: number
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="newsletter-participants.update" type="object">
+  Newsletter participant role changed
+  
+  ```typescript
+  {
+    id: string
+    author: string
+    user: string
+    new_role: string
+    action: string
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="newsletter-settings.update" type="object">
+  Newsletter settings changed
+  
+  ```typescript
+  {
+    id: string
+    update: any
+  }
+  ```
+</ResponseField>
+
+### Settings Events
+
+<ResponseField name="settings.update" type="union">
+  Account settings changed. Union of:
+  
+  ```typescript
+  | { setting: 'unarchiveChats'; value: boolean }
+  | { setting: 'locale'; value: string }
+  | { setting: 'disableLinkPreviews'; value: proto.SyncActionValue.IPrivacySettingDisableLinkPreviewsAction }
+  | { setting: 'timeFormat'; value: proto.SyncActionValue.ITimeFormatAction }
+  | { setting: 'privacySettingRelayAllCalls'; value: proto.SyncActionValue.IPrivacySettingRelayAllCalls }
+  | { setting: 'statusPrivacy'; value: proto.SyncActionValue.IStatusPrivacyAction }
+  | { setting: 'notificationActivitySetting'; value: proto.SyncActionValue.NotificationActivitySettingAction.NotificationActivitySetting }
+  | { setting: 'channelsPersonalisedRecommendation'; value: proto.SyncActionValue.IPrivacySettingChannelsPersonalisedRecommendationAction }
+  ```
+</ResponseField>
+
+<ResponseField name="lid-mapping.update" type="LIDMapping">
+  LID to phone number mapping updated
+  
+  ```typescript
+  {
+    pn: string // phone number
+    lid: string // LID
+  }
+  ```
+</ResponseField>
+
+## BufferedEventData
+
+Internal type used for buffering events before emission:
+
+```typescript
+type BufferedEventData = {
+  historySets: { ... }
+  chatUpserts: { [jid: string]: Chat }
+  chatUpdates: { [jid: string]: ChatUpdate }
+  chatDeletes: Set<string>
+  contactUpserts: { [jid: string]: Contact }
+  contactUpdates: { [jid: string]: Partial<Contact> }
+  messageUpserts: { [key: string]: { type: MessageUpsertType; message: WAMessage } }
+  messageUpdates: { [key: string]: WAMessageUpdate }
+  messageDeletes: { [key: string]: WAMessageKey }
+  messageReactions: { [key: string]: { key: WAMessageKey; reactions: proto.IReaction[] } }
+  messageReceipts: { [key: string]: { key: WAMessageKey; userReceipt: proto.IUserReceipt[] } }
+  groupUpdates: { [jid: string]: Partial<GroupMetadata> }
+}
+```
+
+## Example: Complete Event Handler
+
+```typescript
+import makeWASocket from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({ /* config */ })
+
+// Connection
+sock.ev.on('connection.update', (update) => {
+  console.log('Connection:', update.connection)
+})
+
+// Credentials
+sock.ev.on('creds.update', saveCreds)
+
+// Messages
+sock.ev.on('messages.upsert', async ({ messages, type }) => {
+  for (const msg of messages) {
+    if (type === 'notify' && !msg.key.fromMe) {
+      await handleIncomingMessage(msg)
+    }
+  }
+})
+
+// Message updates
+sock.ev.on('messages.update', (updates) => {
+  for (const { key, update } of updates) {
+    if (update.status) {
+      console.log(`Message ${key.id} status: ${update.status}`)
+    }
+  }
+})
+
+// Presence
+sock.ev.on('presence.update', ({ id, presences }) => {
+  for (const [jid, presence] of Object.entries(presences)) {
+    if (presence.lastKnownPresence === 'composing') {
+      console.log(`${jid} is typing in ${id}`)
+    }
+  }
+})
+
+// Groups
+sock.ev.on('group-participants.update', (update) => {
+  console.log(`${update.action} in ${update.id}:`, update.participants)
+})
+```

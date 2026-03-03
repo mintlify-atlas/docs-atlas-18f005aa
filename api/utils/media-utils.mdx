@@ -1,0 +1,472 @@
+---
+title: Media Utilities
+description: Utility functions for downloading, encrypting, and processing media messages in WhatsApp
+---
+
+Media utility functions handle all aspects of media messages including downloading, encryption, thumbnail generation, and media upload preparation.
+
+## downloadMediaMessage
+
+Downloads media from a WhatsApp message.
+
+```typescript
+export const downloadMediaMessage = async <Type extends 'buffer' | 'stream'>(
+  message: WAMessage,
+  type: Type,
+  options: MediaDownloadOptions,
+  ctx?: DownloadMediaMessageContext
+): Promise<Type extends 'buffer' ? Buffer : Transform>
+```
+
+<ParamField path="message" type="WAMessage" required>
+  The message containing media to download
+</ParamField>
+
+<ParamField path="type" type="'buffer' | 'stream'" required>
+  Whether to return a Buffer or a Stream
+</ParamField>
+
+<ParamField path="options" type="MediaDownloadOptions" required>
+  Download options including byte range
+</ParamField>
+
+<ParamField path="ctx" type="DownloadMediaMessageContext" optional>
+  Context with reupload request handler and logger
+</ParamField>
+
+### MediaDownloadOptions
+
+<ParamField path="options.startByte" type="number" optional>
+  Start byte for partial download
+</ParamField>
+
+<ParamField path="options.endByte" type="number" optional>
+  End byte for partial download
+</ParamField>
+
+<ParamField path="options.options" type="RequestInit" optional>
+  Fetch options for the download request
+</ParamField>
+
+<ResponseField name="return" type="Buffer | Transform">
+  Downloaded media as Buffer (type='buffer') or Stream (type='stream')
+</ResponseField>
+
+**Example:**
+```typescript
+import { downloadMediaMessage } from '@whiskeysockets/baileys'
+import fs from 'fs'
+
+// Download as buffer
+const buffer = await downloadMediaMessage(
+  message,
+  'buffer',
+  { }
+)
+fs.writeFileSync('image.jpg', buffer)
+
+// Download as stream
+const stream = await downloadMediaMessage(
+  message,
+  'stream',
+  { }
+)
+stream.pipe(fs.createWriteStream('video.mp4'))
+
+// Partial download
+const partialBuffer = await downloadMediaMessage(
+  message,
+  'buffer',
+  {
+    startByte: 0,
+    endByte: 1024 // Download first 1KB
+  }
+)
+
+// With reupload context
+const bufferWithRetry = await downloadMediaMessage(
+  message,
+  'buffer',
+  { },
+  {
+    reuploadRequest: async (msg) => {
+      // Request media re-upload from sender
+      return await sock.reuploadRequest(msg)
+    },
+    logger: myLogger
+  }
+)
+```
+
+**When to use:**
+- To download images, videos, audio, documents from messages
+- For saving media to disk
+- When processing media files (thumbnails, transcoding, etc.)
+- Automatically handles media decryption
+
+---
+
+## downloadContentFromMessage
+
+Downloads and decrypts media content from a downloadable message.
+
+```typescript
+export const downloadContentFromMessage = async (
+  { mediaKey, directPath, url }: DownloadableMessage,
+  type: MediaType,
+  opts?: MediaDownloadOptions
+): Promise<Transform>
+```
+
+<ParamField path="message" type="DownloadableMessage" required>
+  Object containing mediaKey, directPath, and/or url
+</ParamField>
+
+<ParamField path="type" type="MediaType" required>
+  Type of media: 'image', 'video', 'audio', 'document', 'sticker', etc.
+</ParamField>
+
+<ParamField path="opts" type="MediaDownloadOptions" optional>
+  Download options
+</ParamField>
+
+<ResponseField name="return" type="Transform">
+  Decrypted media stream
+</ResponseField>
+
+**Example:**
+```typescript
+import { downloadContentFromMessage } from '@whiskeysockets/baileys'
+
+const msg = message.message.imageMessage
+const stream = await downloadContentFromMessage(
+  {
+    mediaKey: msg.mediaKey,
+    directPath: msg.directPath,
+    url: msg.url
+  },
+  'image'
+)
+
+const buffers = []
+for await (const chunk of stream) {
+  buffers.push(chunk)
+}
+const buffer = Buffer.concat(buffers)
+```
+
+**When to use:**
+- For lower-level media downloading
+- When you have the media message properties directly
+- For streaming large files
+
+---
+
+## encryptedStream
+
+Encrypts media for upload to WhatsApp servers.
+
+```typescript
+export const encryptedStream = async (
+  media: WAMediaUpload,
+  mediaType: MediaType,
+  options?: EncryptedStreamOptions
+): Promise<{
+  mediaKey: Buffer
+  encFilePath: string
+  originalFilePath?: string
+  mac: Buffer
+  fileEncSha256: Buffer
+  fileSha256: Buffer
+  fileLength: number
+}>
+```
+
+<ParamField path="media" type="WAMediaUpload" required>
+  Media to encrypt (Buffer, Stream, or URL object)
+</ParamField>
+
+<ParamField path="mediaType" type="MediaType" required>
+  Type of media being encrypted
+</ParamField>
+
+<ParamField path="options" type="EncryptedStreamOptions" optional>
+  Encryption options
+</ParamField>
+
+### EncryptedStreamOptions
+
+<ParamField path="options.saveOriginalFileIfRequired" type="boolean" optional default={false}>
+  Whether to save the original unencrypted file
+</ParamField>
+
+<ParamField path="options.logger" type="ILogger" optional>
+  Logger instance
+</ParamField>
+
+<ParamField path="options.opts" type="RequestInit" optional>
+  Fetch options if media is a URL
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Object containing encryption keys, file paths, hashes, and file length
+</ResponseField>
+
+**Example:**
+```typescript
+import { encryptedStream } from '@whiskeysockets/baileys'
+import fs from 'fs'
+
+// Encrypt from buffer
+const buffer = fs.readFileSync('image.jpg')
+const encrypted = await encryptedStream(
+  buffer,
+  'image',
+  { logger: myLogger }
+)
+
+console.log(encrypted.mediaKey) // Encryption key
+console.log(encrypted.encFilePath) // Path to encrypted file
+console.log(encrypted.fileSha256) // SHA256 of original
+console.log(encrypted.fileEncSha256) // SHA256 of encrypted
+
+// Encrypt from URL
+const encryptedFromUrl = await encryptedStream(
+  { url: 'https://example.com/image.jpg' },
+  'image'
+)
+
+// Encrypt from stream
+const stream = fs.createReadStream('video.mp4')
+const encryptedStream = await encryptedStream(
+  { stream },
+  'video',
+  { saveOriginalFileIfRequired: true }
+)
+
+console.log(encryptedStream.originalFilePath) // Saved original file
+```
+
+**When to use:**
+- Before uploading media to WhatsApp
+- Automatically called by `sendMessage` with media
+- For manual media upload workflows
+
+---
+
+## generateThumbnail
+
+Generates a JPEG thumbnail for images or videos.
+
+```typescript
+export async function generateThumbnail(
+  file: string,
+  mediaType: 'video' | 'image',
+  options: { logger?: ILogger }
+): Promise<{
+  thumbnail?: string
+  originalImageDimensions?: { width: number; height: number }
+}>
+```
+
+<ParamField path="file" type="string" required>
+  Path to the media file
+</ParamField>
+
+<ParamField path="mediaType" type="'video' | 'image'" required>
+  Type of media
+</ParamField>
+
+<ParamField path="options" type="object" required>
+  Options with optional logger
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Object with base64 thumbnail and original dimensions (for images)
+</ResponseField>
+
+**Example:**
+```typescript
+import { generateThumbnail } from '@whiskeysockets/baileys'
+
+// Generate image thumbnail
+const { thumbnail, originalImageDimensions } = await generateThumbnail(
+  '/path/to/image.jpg',
+  'image',
+  { logger: myLogger }
+)
+
+console.log(thumbnail) // Base64 encoded JPEG thumbnail
+console.log(originalImageDimensions) // { width: 1920, height: 1080 }
+
+// Generate video thumbnail
+const { thumbnail: videoThumb } = await generateThumbnail(
+  '/path/to/video.mp4',
+  'video',
+  { logger: myLogger }
+)
+
+console.log(videoThumb) // Base64 thumbnail from video frame
+```
+
+**When to use:**
+- Automatically used when sending images/videos
+- For generating preview thumbnails
+- Requires ffmpeg for video thumbnails
+- Requires sharp or jimp for image thumbnails
+
+---
+
+## getAudioDuration
+
+Gets the duration of an audio file in seconds.
+
+```typescript
+export async function getAudioDuration(
+  buffer: Buffer | string | Readable
+): Promise<number | undefined>
+```
+
+<ParamField path="buffer" type="Buffer | string | Readable" required>
+  Audio file as Buffer, file path string, or Readable stream
+</ParamField>
+
+<ResponseField name="return" type="number | undefined">
+  Audio duration in seconds
+</ResponseField>
+
+**Example:**
+```typescript
+import { getAudioDuration } from '@whiskeysockets/baileys'
+import fs from 'fs'
+
+// From buffer
+const buffer = fs.readFileSync('audio.mp3')
+const duration = await getAudioDuration(buffer)
+console.log(`Duration: ${duration} seconds`)
+
+// From file path
+const duration2 = await getAudioDuration('/path/to/audio.mp3')
+
+// From stream
+const stream = fs.createReadStream('audio.ogg')
+const duration3 = await getAudioDuration(stream)
+```
+
+**When to use:**
+- Automatically used when sending audio messages
+- For displaying audio duration in UI
+- Requires music-metadata package
+
+---
+
+## getRawMediaUploadData
+
+Prepares raw media data for upload (used for newsletters).
+
+```typescript
+export const getRawMediaUploadData = async (
+  media: WAMediaUpload,
+  mediaType: MediaType,
+  logger?: ILogger
+): Promise<{
+  filePath: string
+  fileSha256: Buffer
+  fileLength: number
+}>
+```
+
+<ParamField path="media" type="WAMediaUpload" required>
+  Media to prepare (Buffer, Stream, or URL)
+</ParamField>
+
+<ParamField path="mediaType" type="MediaType" required>
+  Type of media
+</ParamField>
+
+<ParamField path="logger" type="ILogger" optional>
+  Logger instance
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Object with file path, SHA256 hash, and file length
+</ResponseField>
+
+**Example:**
+```typescript
+import { getRawMediaUploadData } from '@whiskeysockets/baileys'
+import fs from 'fs'
+
+const buffer = fs.readFileSync('image.jpg')
+const uploadData = await getRawMediaUploadData(
+  buffer,
+  'image',
+  logger
+)
+
+console.log(uploadData.filePath) // Temp file path
+console.log(uploadData.fileSha256) // SHA256 hash
+console.log(uploadData.fileLength) // File size in bytes
+
+// Use for newsletter upload
+const { mediaUrl, directPath } = await sock.newsletterUpload(
+  uploadData.filePath,
+  {
+    fileEncSha256B64: uploadData.fileSha256.toString('base64'),
+    mediaType: 'image'
+  }
+)
+```
+
+**When to use:**
+- When uploading media to newsletters
+- For unencrypted media uploads
+- Automatically used internally for newsletter messages
+
+---
+
+## generateProfilePicture
+
+Generates a profile picture by resizing and cropping an image.
+
+```typescript
+export const generateProfilePicture = async (
+  mediaUpload: WAMediaUpload,
+  dimensions?: { width: number; height: number }
+): Promise<{ img: Buffer }>
+```
+
+<ParamField path="mediaUpload" type="WAMediaUpload" required>
+  Image to process (Buffer, Stream, or URL)
+</ParamField>
+
+<ParamField path="dimensions" type="{ width: number; height: number }" optional>
+  Target dimensions (default: 640x640)
+</ParamField>
+
+<ResponseField name="return" type="{ img: Buffer }">
+  Processed profile picture as JPEG buffer
+</ResponseField>
+
+**Example:**
+```typescript
+import { generateProfilePicture } from '@whiskeysockets/baileys'
+import fs from 'fs'
+
+const buffer = fs.readFileSync('photo.jpg')
+const { img } = await generateProfilePicture(buffer)
+
+// Update profile picture
+await sock.updateProfilePicture(sock.user.id, img)
+
+// Custom dimensions
+const { img: smallImg } = await generateProfilePicture(
+  buffer,
+  { width: 320, height: 320 }
+)
+```
+
+**When to use:**
+- When updating profile pictures
+- Automatically resizes and crops to square
+- Requires sharp or jimp library

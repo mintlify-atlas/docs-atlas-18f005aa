@@ -1,0 +1,482 @@
+---
+title: Message Types
+description: Message types for sending and receiving WhatsApp messages
+---
+
+Baileys provides comprehensive TypeScript types for working with WhatsApp messages.
+
+## Core Message Types
+
+### WAMessage
+
+Extends `proto.IWebMessageInfo` with additional Baileys-specific fields.
+
+<ResponseField name="key" type="WAMessageKey" required>
+  Unique identifier for the message
+</ResponseField>
+
+<ResponseField name="message" type="WAMessageContent">
+  The actual message content (proto.IMessage)
+</ResponseField>
+
+<ResponseField name="messageTimestamp" type="number | Long">
+  Unix timestamp when message was sent
+</ResponseField>
+
+<ResponseField name="messageStubParameters" type="any">
+  Parameters for stub messages (system messages)
+</ResponseField>
+
+<ResponseField name="category" type="string">
+  Message category classification
+</ResponseField>
+
+<ResponseField name="retryCount" type="number">
+  Number of times message delivery has been retried
+</ResponseField>
+
+### WAMessageKey
+
+Extends `proto.IMessageKey` with additional routing information.
+
+<ResponseField name="remoteJid" type="string">
+  JID of the chat (group or individual)
+</ResponseField>
+
+<ResponseField name="fromMe" type="boolean">
+  Whether the message was sent by you
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  Unique message ID
+</ResponseField>
+
+<ResponseField name="participant" type="string">
+  Sender's JID in group chats
+</ResponseField>
+
+<ResponseField name="remoteJidAlt" type="string">
+  Alternative JID format (Baileys extension)
+</ResponseField>
+
+<ResponseField name="participantAlt" type="string">
+  Alternative participant format (Baileys extension)
+</ResponseField>
+
+<ResponseField name="server_id" type="string">
+  Server-assigned ID (Baileys extension)
+</ResponseField>
+
+<ResponseField name="addressingMode" type="string">
+  Addressing mode: 'pn' or 'lid' (Baileys extension)
+</ResponseField>
+
+<ResponseField name="isViewOnce" type="boolean">
+  Whether this is a view-once message (Baileys extension)
+</ResponseField>
+
+## Message Content Types
+
+### AnyMessageContent
+
+Union type for all possible message content:
+
+```typescript
+type AnyMessageContent =
+  | AnyRegularMessageContent
+  | { forward: WAMessage; force?: boolean }
+  | { delete: WAMessageKey }
+  | { disappearingMessagesInChat: boolean | number }
+  | { limitSharing: boolean }
+```
+
+### AnyRegularMessageContent
+
+Union of all regular message types you can send:
+
+<AccordionGroup>
+  <Accordion title="Text Messages">
+    ```typescript
+    {
+      text: string
+      linkPreview?: WAUrlInfo | null
+    } & Mentionable & Contextable & Editable
+    ```
+    
+    <ParamField path="text" type="string" required>
+      The message text
+    </ParamField>
+    
+    <ParamField path="linkPreview" type="WAUrlInfo | null">
+      Link preview metadata
+    </ParamField>
+    
+    <ParamField path="mentions" type="string[]">
+      Array of mentioned JIDs
+    </ParamField>
+    
+    <ParamField path="contextInfo" type="proto.IContextInfo">
+      Context info (quoted message, etc.)
+    </ParamField>
+    
+    <ParamField path="edit" type="WAMessageKey">
+      Key of message to edit
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="Media Messages">
+    See [AnyMediaMessageContent](#anymediamessagecontent) below
+  </Accordion>
+  
+  <Accordion title="Poll Messages">
+    ```typescript
+    {
+      poll: PollMessageOptions
+    } & Mentionable & Contextable & Editable
+    ```
+  </Accordion>
+  
+  <Accordion title="Contact Messages">
+    ```typescript
+    {
+      contacts: {
+        displayName?: string
+        contacts: proto.Message.IContactMessage[]
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Location Messages">
+    ```typescript
+    {
+      location: WALocationMessage
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Reaction Messages">
+    ```typescript
+    {
+      react: proto.Message.IReactionMessage
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Button Reply">
+    ```typescript
+    {
+      buttonReply: ButtonReplyInfo
+      type: 'template' | 'plain'
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Pin Messages">
+    ```typescript
+    {
+      pin: WAMessageKey
+      type: proto.PinInChat.Type
+      time?: 86400 | 604800 | 2592000 // 24h, 7d, or 30d
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### AnyMediaMessageContent
+
+Union type for all media message types:
+
+<Tabs>
+  <Tab title="Image">
+    ```typescript
+    {
+      image: WAMediaUpload
+      caption?: string
+      jpegThumbnail?: string
+      width?: number
+      height?: number
+      mentions?: string[]
+      contextInfo?: proto.IContextInfo
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Video">
+    ```typescript
+    {
+      video: WAMediaUpload
+      caption?: string
+      gifPlayback?: boolean
+      jpegThumbnail?: string
+      ptv?: boolean // video note
+      width?: number
+      height?: number
+      mentions?: string[]
+      contextInfo?: proto.IContextInfo
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Audio">
+    ```typescript
+    {
+      audio: WAMediaUpload
+      ptt?: boolean // voice note
+      seconds?: number // duration
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Document">
+    ```typescript
+    {
+      document: WAMediaUpload
+      mimetype: string
+      fileName?: string
+      caption?: string
+      contextInfo?: proto.IContextInfo
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Sticker">
+    ```typescript
+    {
+      sticker: WAMediaUpload
+      isAnimated?: boolean
+      width?: number
+      height?: number
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### WAMediaUpload
+
+Union type for media upload sources:
+
+```typescript
+type WAMediaUpload = 
+  | Buffer 
+  | { stream: Readable } 
+  | { url: URL | string }
+```
+
+## Special Message Types
+
+### PollMessageOptions
+
+<ParamField path="name" type="string" required>
+  Poll question
+</ParamField>
+
+<ParamField path="values" type="string[]" required>
+  Array of poll options
+</ParamField>
+
+<ParamField path="selectableCount" type="number">
+  Number of options users can select (default: 1)
+</ParamField>
+
+<ParamField path="messageSecret" type="Uint8Array">
+  32-byte secret to encrypt poll selections
+</ParamField>
+
+<ParamField path="toAnnouncementGroup" type="boolean">
+  Whether poll is for announcement group
+</ParamField>
+
+### EventMessageOptions
+
+<ParamField path="name" type="string" required>
+  Event title
+</ParamField>
+
+<ParamField path="startDate" type="Date" required>
+  Event start date/time
+</ParamField>
+
+<ParamField path="description" type="string">
+  Event description
+</ParamField>
+
+<ParamField path="endDate" type="Date">
+  Event end date/time
+</ParamField>
+
+<ParamField path="location" type="WALocationMessage">
+  Event location
+</ParamField>
+
+<ParamField path="call" type="'audio' | 'video'">
+  Type of call event
+</ParamField>
+
+<ParamField path="isCancelled" type="boolean">
+  Whether event is cancelled
+</ParamField>
+
+<ParamField path="isScheduleCall" type="boolean">
+  Whether this is a scheduled call
+</ParamField>
+
+<ParamField path="extraGuestsAllowed" type="boolean">
+  Whether guests can bring +1
+</ParamField>
+
+## Message Generation Options
+
+### MessageGenerationOptions
+
+<ParamField path="timestamp" type="Date">
+  Manual message timestamp
+</ParamField>
+
+<ParamField path="quoted" type="WAMessage">
+  Message to quote/reply to
+</ParamField>
+
+<ParamField path="ephemeralExpiration" type="number | string">
+  Disappearing message timer
+</ParamField>
+
+<ParamField path="messageId" type="string">
+  Custom message ID override
+</ParamField>
+
+<ParamField path="mediaUploadTimeoutMs" type="number">
+  Timeout for media uploads
+</ParamField>
+
+<ParamField path="statusJidList" type="string[]">
+  JID list for status broadcasts
+</ParamField>
+
+<ParamField path="backgroundColor" type="string">
+  Background color for status
+</ParamField>
+
+<ParamField path="font" type="number">
+  Font type for status
+</ParamField>
+
+## Message Updates and Events
+
+### MessageUpsertType
+
+```typescript
+type MessageUpsertType = 'append' | 'notify'
+```
+
+- **notify**: New message that should trigger a notification
+- **append**: Historical message being synced, no notification needed
+
+### WAMessageUpdate
+
+<ResponseField name="key" type="WAMessageKey" required>
+  Key identifying the message to update
+</ResponseField>
+
+<ResponseField name="update" type="Partial<WAMessage>" required>
+  Partial message data with updates to apply
+</ResponseField>
+
+### MessageUserReceipt
+
+Alias for `proto.IUserReceipt` containing:
+
+<ResponseField name="userJid" type="string">
+  User who sent the receipt
+</ResponseField>
+
+<ResponseField name="receiptTimestamp" type="number | Long">
+  When the receipt was sent
+</ResponseField>
+
+<ResponseField name="readTimestamp" type="number | Long">
+  When the message was read
+</ResponseField>
+
+<ResponseField name="playedTimestamp" type="number | Long">
+  When media was played
+</ResponseField>
+
+## Utility Types
+
+### DownloadableMessage
+
+Messages that contain downloadable media:
+
+<ResponseField name="mediaKey" type="Uint8Array | null">
+  Encryption key for media
+</ResponseField>
+
+<ResponseField name="directPath" type="string | null">
+  Direct download path
+</ResponseField>
+
+<ResponseField name="url" type="string | null">
+  Download URL
+</ResponseField>
+
+### MessageReceiptType
+
+```typescript
+type MessageReceiptType =
+  | 'read'
+  | 'read-self'
+  | 'hist_sync'
+  | 'peer_msg'
+  | 'sender'
+  | 'inactive'
+  | 'played'
+  | undefined
+```
+
+### MinimalMessage
+
+Minimal message data for references:
+
+```typescript
+type MinimalMessage = Pick<WAMessage, 'key' | 'messageTimestamp'>
+```
+
+## Example Usage
+
+```typescript
+import { AnyMessageContent } from '@whiskeysockets/baileys'
+
+// Send a text message
+const textMsg: AnyMessageContent = {
+  text: 'Hello @1234567890',
+  mentions: ['1234567890@s.whatsapp.net']
+}
+
+// Send an image
+const imageMsg: AnyMessageContent = {
+  image: { url: 'https://example.com/image.jpg' },
+  caption: 'Check this out!',
+  mentions: ['1234567890@s.whatsapp.net']
+}
+
+// Send a poll
+const pollMsg: AnyMessageContent = {
+  poll: {
+    name: 'What\'s your favorite color?',
+    values: ['Red', 'Blue', 'Green'],
+    selectableCount: 1
+  }
+}
+
+// Delete a message
+const deleteMsg: AnyMessageContent = {
+  delete: messageKey
+}
+
+// Forward a message
+const forwardMsg: AnyMessageContent = {
+  forward: originalMessage,
+  force: true
+}
+```

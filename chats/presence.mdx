@@ -1,0 +1,115 @@
+---
+title: Presence Updates
+description: Send presence updates, typing indicators, and manage online status in WhatsApp using Baileys
+---
+
+## Send Presence Update
+
+Let contacts know whether you're online, offline, typing, recording audio, or viewing their status.
+
+### Basic Usage
+
+```ts
+await sock.sendPresenceUpdate('available', jid)
+```
+
+### WAPresence Types
+
+The `presence` parameter can be one of the following [WAPresence](https://baileys.whiskeysockets.io/types/WAPresence.html) values:
+
+- `'unavailable'` - Offline/not available
+- `'available'` - Online/available  
+- `'composing'` - Typing a message
+- `'recording'` - Recording audio message
+- `'paused'` - Stopped typing (treated as available)
+
+<Note>
+The presence expires after about 10 seconds. You need to send periodic updates to maintain an active presence state.
+</Note>
+
+## Update Your Global Presence
+
+To update your overall online/offline status:
+
+```ts
+// Go online
+await sock.sendPresenceUpdate('available')
+
+// Go offline  
+await sock.sendPresenceUpdate('unavailable')
+```
+
+## Send Typing Indicator
+
+Let the other person know you're typing in their chat:
+
+```ts
+// Start typing
+await sock.sendPresenceUpdate('composing', jid)
+
+// Stop typing (go back to available)
+await sock.sendPresenceUpdate('paused', jid)
+```
+
+## Send Recording Indicator
+
+Show that you're recording an audio message:
+
+```ts
+await sock.sendPresenceUpdate('recording', jid)
+```
+
+<Tip>
+When using 'composing' or 'recording', always provide the `jid` parameter to specify which chat you're active in.
+</Tip>
+
+## Subscribe to Presence Updates
+
+To receive presence updates from a contact or group:
+
+```ts
+// Request updates for a chat
+await sock.presenceSubscribe(jid)
+```
+
+## Listen for Presence Updates
+
+Receive notifications when contacts change their presence:
+
+```ts
+// The presence update is fetched and called here
+sock.ev.on('presence.update', (update) => {
+    console.log(update)
+    // {
+    //   id: 'jid@s.whatsapp.net',
+    //   presences: {
+    //     'participant@s.whatsapp.net': {
+    //       lastKnownPresence: 'available' | 'unavailable' | 'composing' | 'recording',
+    //       lastSeen?: number // Unix timestamp
+    //     }
+    //   }
+    // }
+})
+
+// Request updates for a chat
+await sock.presenceSubscribe(jid)
+```
+
+## Push Notifications
+
+<Warning>
+If a desktop client is active, WA doesn't send push notifications to the device. If you would like to receive said notifications -- mark your Baileys client offline using `sock.sendPresenceUpdate('unavailable')`
+</Warning>
+
+## Implementation Details
+
+The `sendPresenceUpdate` function is implemented in `src/Socket/chats.ts:684-724`:
+
+- For `available`/`unavailable`: Sends a global presence update
+- For `composing`/`recording`/`paused`: Sends a chatstate update to specific JID
+- Automatically handles LID (Lightweight Identity) for supported users
+- Recording presence is sent as composing with media type 'audio'
+
+<Info>
+The function automatically replaces '@' symbols in your display name when sending presence updates.
+</Info>

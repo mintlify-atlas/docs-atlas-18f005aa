@@ -1,0 +1,467 @@
+---
+title: Group Settings
+description: Configure group settings including announcements, locked settings, member permissions, and ephemeral messages
+---
+
+## Overview
+
+Baileys provides methods to configure various group settings. Only group admins can modify these settings.
+
+## Announcement Mode
+
+Control who can send messages in the group.
+
+### Function Signature
+
+```typescript
+groupSettingUpdate(
+  jid: string,
+  setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'
+): Promise<void>
+```
+
+### Enable Announcement Mode
+
+Only allow admins to send messages.
+
+```typescript
+// Only admins can send messages
+await sock.groupSettingUpdate(jid, 'announcement')
+```
+
+<Info>
+  When announcement mode is enabled, regular members cannot send messages. Only admins can post to the group.
+</Info>
+
+### Disable Announcement Mode
+
+Allow everyone to send messages.
+
+```typescript
+// Allow everyone to send messages
+await sock.groupSettingUpdate(jid, 'not_announcement')
+```
+
+## Locked Settings
+
+Control who can modify group settings like the display picture, name, and description.
+
+### Lock Group Settings
+
+Only allow admins to modify group settings.
+
+```typescript
+// Only allow admins to modify the group's settings
+await sock.groupSettingUpdate(jid, 'locked')
+```
+
+<Note>
+  When locked, only admins can change the group's display picture, name, description, and other settings.
+</Note>
+
+### Unlock Group Settings
+
+Allow everyone to modify group settings.
+
+```typescript
+// Allow everyone to modify the group's settings
+await sock.groupSettingUpdate(jid, 'unlocked')
+```
+
+<Warning>
+  When unlocked, any member can change the group picture, name, and description. This may lead to unwanted modifications.
+</Warning>
+
+## Group Subject (Name)
+
+Update the group's name.
+
+### Function Signature
+
+```typescript
+groupUpdateSubject(jid: string, subject: string): Promise<void>
+```
+
+### Update Group Name
+
+```typescript
+await sock.groupUpdateSubject(jid, 'New Subject!')
+```
+
+### Example with Validation
+
+```typescript
+const updateGroupName = async (groupJid: string, newName: string) => {
+  // Validate name length (WhatsApp limits to 25 characters)
+  if (newName.length > 25) {
+    throw new Error('Group name cannot exceed 25 characters')
+  }
+
+  if (newName.trim().length === 0) {
+    throw new Error('Group name cannot be empty')
+  }
+
+  try {
+    await sock.groupUpdateSubject(groupJid, newName)
+    console.log(`Group name updated to: ${newName}`)
+  } catch (error) {
+    console.error('Failed to update group name:', error)
+    throw error
+  }
+}
+```
+
+## Group Description
+
+Update the group's description.
+
+### Function Signature
+
+```typescript
+groupUpdateDescription(jid: string, description?: string): Promise<void>
+```
+
+### Set Description
+
+```typescript
+await sock.groupUpdateDescription(jid, 'New Description!')
+```
+
+### Remove Description
+
+Pass `undefined` or an empty string to remove the description.
+
+```typescript
+// Remove description
+await sock.groupUpdateDescription(jid, undefined)
+```
+
+### Complete Example
+
+```typescript
+const updateGroupDescription = async (
+  groupJid: string,
+  description?: string
+) => {
+  try {
+    await sock.groupUpdateDescription(groupJid, description)
+    
+    if (description) {
+      console.log('Description updated')
+    } else {
+      console.log('Description removed')
+    }
+  } catch (error) {
+    console.error('Failed to update description:', error)
+    throw error
+  }
+}
+```
+
+<Info>
+  The implementation automatically handles the previous description ID (`descId`) by fetching current metadata. This ensures proper description versioning.
+</Info>
+
+## Member Add Mode
+
+Control who can add new members to the group.
+
+### Function Signature
+
+```typescript
+groupMemberAddMode(
+  jid: string,
+  mode: 'admin_add' | 'all_member_add'
+): Promise<void>
+```
+
+### Only Admins Can Add
+
+```typescript
+await sock.groupMemberAddMode(jid, 'admin_add')
+```
+
+### All Members Can Add
+
+```typescript
+await sock.groupMemberAddMode(jid, 'all_member_add')
+```
+
+### Example Toggle Function
+
+```typescript
+const toggleMemberAddMode = async (groupJid: string) => {
+  // Get current metadata
+  const metadata = await sock.groupMetadata(groupJid)
+
+  // Toggle the setting
+  const newMode = metadata.memberAddMode ? 'admin_add' : 'all_member_add'
+  
+  await sock.groupMemberAddMode(groupJid, newMode)
+
+  console.log(`Member add mode set to: ${newMode}`)
+  return newMode
+}
+```
+
+## Join Approval Mode
+
+Control whether join requests require admin approval.
+
+### Function Signature
+
+```typescript
+groupJoinApprovalMode(jid: string, mode: 'on' | 'off'): Promise<void>
+```
+
+### Enable Join Approval
+
+```typescript
+// Require admin approval for new members
+await sock.groupJoinApprovalMode(jid, 'on')
+```
+
+### Disable Join Approval
+
+```typescript
+// Allow anyone with invite link to join directly
+await sock.groupJoinApprovalMode(jid, 'off')
+```
+
+<Note>
+  When join approval is enabled, users who click the invite link will need to request to join, and admins must approve them using `groupRequestParticipantsUpdate`.
+</Note>
+
+## Ephemeral Messages (Disappearing Messages)
+
+Enable or disable disappearing messages for the group.
+
+### Function Signature
+
+```typescript
+groupToggleEphemeral(jid: string, ephemeralExpiration: number): Promise<void>
+```
+
+### Ephemeral Durations
+
+| Duration | Seconds   | Description              |
+|----------|-----------|-------------------------|
+| Remove   | 0         | Disable ephemeral       |
+| 24 hours | 86400     | Messages disappear in 1 day |
+| 7 days   | 604800    | Messages disappear in 1 week |
+| 90 days  | 7776000   | Messages disappear in 3 months |
+
+### Enable Ephemeral Messages
+
+```typescript
+// Enable 24-hour disappearing messages
+await sock.groupToggleEphemeral(jid, 86400)
+
+// Enable 7-day disappearing messages
+await sock.groupToggleEphemeral(jid, 604800)
+
+// Enable 90-day disappearing messages
+await sock.groupToggleEphemeral(jid, 7776000)
+```
+
+### Disable Ephemeral Messages
+
+```typescript
+// Disable ephemeral messages
+await sock.groupToggleEphemeral(jid, 0)
+```
+
+### Helper Function
+
+```typescript
+type EphemeralDuration = '24h' | '7d' | '90d' | 'off'
+
+const setGroupEphemeral = async (
+  groupJid: string,
+  duration: EphemeralDuration
+) => {
+  const durations = {
+    'off': 0,
+    '24h': 86400,
+    '7d': 604800,
+    '90d': 7776000
+  }
+
+  const seconds = durations[duration]
+  await sock.groupToggleEphemeral(groupJid, seconds)
+
+  console.log(`Ephemeral messages set to: ${duration}`)
+}
+
+// Usage
+await setGroupEphemeral(groupJid, '7d')
+```
+
+## Leave Group
+
+Leave a group you're a member of.
+
+### Function Signature
+
+```typescript
+groupLeave(id: string): Promise<void>
+```
+
+### Leave a Group
+
+```typescript
+// Will throw error if it fails
+await sock.groupLeave(jid)
+```
+
+<Warning>
+  This action is irreversible. You'll need to be re-invited to rejoin the group.
+</Warning>
+
+### Safe Leave Function
+
+```typescript
+const leaveGroup = async (groupJid: string) => {
+  try {
+    await sock.groupLeave(groupJid)
+    console.log('Successfully left the group')
+  } catch (error) {
+    console.error('Failed to leave group:', error)
+    throw error
+  }
+}
+```
+
+## Complete Settings Configuration
+
+Example of configuring multiple group settings:
+
+<Steps>
+  <Step title="Lock down the group">
+    ```typescript
+    const lockdownGroup = async (groupJid: string) => {
+      // Only admins can send messages
+      await sock.groupSettingUpdate(groupJid, 'announcement')
+      
+      // Only admins can modify settings
+      await sock.groupSettingUpdate(groupJid, 'locked')
+      
+      // Only admins can add members
+      await sock.groupMemberAddMode(groupJid, 'admin_add')
+      
+      // Require approval to join
+      await sock.groupJoinApprovalMode(groupJid, 'on')
+      
+      console.log('Group locked down successfully')
+    }
+    ```
+  </Step>
+
+  <Step title="Open group settings">
+    ```typescript
+    const openGroup = async (groupJid: string) => {
+      // Everyone can send messages
+      await sock.groupSettingUpdate(groupJid, 'not_announcement')
+      
+      // Everyone can modify settings
+      await sock.groupSettingUpdate(groupJid, 'unlocked')
+      
+      // Everyone can add members
+      await sock.groupMemberAddMode(groupJid, 'all_member_add')
+      
+      // No approval needed to join
+      await sock.groupJoinApprovalMode(groupJid, 'off')
+      
+      console.log('Group opened successfully')
+    }
+    ```
+  </Step>
+
+  <Step title="Configure privacy settings">
+    ```typescript
+    const configureGroupPrivacy = async (groupJid: string) => {
+      // Update name
+      await sock.groupUpdateSubject(groupJid, 'Private Discussion Group')
+      
+      // Set description
+      await sock.groupUpdateDescription(
+        groupJid,
+        'Confidential discussions only. Messages auto-delete after 7 days.'
+      )
+      
+      // Enable 7-day ephemeral messages
+      await sock.groupToggleEphemeral(groupJid, 604800)
+      
+      // Lock settings to admins only
+      await sock.groupSettingUpdate(groupJid, 'locked')
+      
+      console.log('Privacy settings configured')
+    }
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+<Info>
+  **Check Admin Status**: Always verify you have admin permissions before attempting to modify settings.
+</Info>
+
+<Note>
+  **Sequential Updates**: When making multiple setting changes, execute them sequentially to ensure each completes successfully.
+</Note>
+
+<Warning>
+  **Rate Limiting**: Avoid making too many rapid setting changes. WhatsApp may rate-limit your requests.
+</Warning>
+
+### Error Handling Pattern
+
+```typescript
+const updateGroupSettings = async (
+  groupJid: string,
+  settings: {
+    announcement?: boolean
+    locked?: boolean
+    ephemeral?: number
+  }
+) => {
+  try {
+    if (settings.announcement !== undefined) {
+      await sock.groupSettingUpdate(
+        groupJid,
+        settings.announcement ? 'announcement' : 'not_announcement'
+      )
+    }
+
+    if (settings.locked !== undefined) {
+      await sock.groupSettingUpdate(
+        groupJid,
+        settings.locked ? 'locked' : 'unlocked'
+      )
+    }
+
+    if (settings.ephemeral !== undefined) {
+      await sock.groupToggleEphemeral(groupJid, settings.ephemeral)
+    }
+
+    console.log('Settings updated successfully')
+  } catch (error) {
+    console.error('Failed to update settings:', error)
+    throw error
+  }
+}
+
+// Usage
+await updateGroupSettings(groupJid, {
+  announcement: true,
+  locked: true,
+  ephemeral: 604800 // 7 days
+})
+```
+
+## Related Methods
+
+- [Group Metadata](/groups/group-metadata) - Check current group settings
+- [Managing Participants](/groups/managing-participants) - Control member permissions
+- [Creating Groups](/groups/creating-groups) - Initial group setup

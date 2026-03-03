@@ -1,0 +1,795 @@
+---
+title: 'Socket Configuration'
+description: 'Complete reference for all Baileys socket configuration options with real examples from source code'
+---
+
+## Overview
+
+The `makeWASocket` function accepts a comprehensive configuration object that controls every aspect of your WhatsApp connection. This guide covers all available options from the `SocketConfig` type.
+
+<Note>
+All configuration options are optional and have sensible defaults from `DEFAULT_CONNECTION_CONFIG`.
+</Note>
+
+## Basic Configuration
+
+```typescript
+import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys'
+
+const { state } = await useMultiFileAuthState('auth_info')
+
+const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true
+})
+```
+
+## Connection Options
+
+### waWebSocketUrl
+
+The WebSocket URL to connect to WhatsApp servers.
+
+```typescript
+const sock = makeWASocket({
+    waWebSocketUrl: 'wss://web.whatsapp.com/ws/chat' // default
+})
+```
+
+**Default:** `'wss://web.whatsapp.com/ws/chat'`
+
+### connectTimeoutMs
+
+Timeout for establishing the WebSocket connection.
+
+```typescript
+const sock = makeWASocket({
+    connectTimeoutMs: 20_000 // 20 seconds (default)
+})
+```
+
+**Default:** `20000` (20 seconds)  
+**Type:** `number` (milliseconds)
+
+<Warning>
+If the connection doesn't establish within this timeout, it will fail and you'll need to retry.
+</Warning>
+
+### keepAliveIntervalMs
+
+Interval for ping-pong messages to keep the WebSocket alive.
+
+```typescript
+const sock = makeWASocket({
+    keepAliveIntervalMs: 30_000 // 30 seconds (default)
+})
+```
+
+**Default:** `30000` (30 seconds)  
+**Type:** `number` (milliseconds)
+
+### defaultQueryTimeoutMs
+
+Default timeout for query requests to WhatsApp.
+
+```typescript
+const sock = makeWASocket({
+    defaultQueryTimeoutMs: 60_000 // 60 seconds (default)
+})
+```
+
+**Default:** `60000` (60 seconds)  
+**Type:** `number | undefined`
+
+<Note>
+Set to `undefined` for no timeout, but this is not recommended.
+</Note>
+
+## Authentication Options
+
+### auth
+
+**Required.** Authentication state containing credentials and keys.
+
+```typescript
+import { useMultiFileAuthState } from '@whiskeysockets/baileys'
+
+const { state } = await useMultiFileAuthState('auth_info')
+
+const sock = makeWASocket({
+    auth: state
+})
+```
+
+**Type:** `AuthenticationState`
+
+### printQRInTerminal
+
+Automatically print QR code to terminal (deprecated in favor of manual handling).
+
+```typescript
+const sock = makeWASocket({
+    printQRInTerminal: true // or false for pairing code
+})
+```
+
+**Default:** Not set  
+**Type:** `boolean`
+
+<Warning>
+This feature is deprecated. Handle QR codes via the `connection.update` event instead.
+</Warning>
+
+### qrTimeout
+
+Time to wait for QR code generation.
+
+```typescript
+const sock = makeWASocket({
+    qrTimeout: 60000 // 60 seconds
+})
+```
+
+**Default:** Not set  
+**Type:** `number` (milliseconds)
+
+## Browser Configuration
+
+### browser
+
+Browser identity shown in WhatsApp's "Linked Devices".
+
+```typescript
+import { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    browser: Browsers.macOS('Chrome') // ['Mac OS', 'Chrome', '14.4.1']
+})
+```
+
+**Default:** `Browsers.macOS('Chrome')`  
+**Type:** `[platform: string, appName: string, version: string]`
+
+**Available presets:**
+- `Browsers.ubuntu(appName)` - Ubuntu 22.04.4
+- `Browsers.macOS(appName)` - Mac OS 14.4.1
+- `Browsers.windows(appName)` - Windows 10.0.22631
+- `Browsers.baileys(appName)` - Baileys 6.5.0
+- `Browsers.appropriate(appName)` - Auto-detect from OS
+
+### version
+
+WhatsApp Web version to use.
+
+```typescript
+import { fetchLatestBaileysVersion } from '@whiskeysockets/baileys'
+
+const { version, isLatest } = await fetchLatestBaileysVersion()
+
+const sock = makeWASocket({
+    version // Use latest version
+})
+```
+
+**Default:** `[2, 3000, 1033846690]`  
+**Type:** `[major: number, minor: number, patch: number]`
+
+## Message & Media Options
+
+### getMessage
+
+Fetch messages from your store for retry handling and poll decryption.
+
+```typescript
+import { WAMessageKey, proto } from '@whiskeysockets/baileys'
+
+const getMessage = async (key: WAMessageKey): Promise<proto.IMessage | undefined> => {
+    // Retrieve from your database/store
+    return await messageDB.findOne({ 
+        remoteJid: key.remoteJid, 
+        id: key.id 
+    })
+}
+
+const sock = makeWASocket({
+    getMessage
+})
+```
+
+**Default:** `async () => undefined`  
+**Type:** `(key: WAMessageKey) => Promise<proto.IMessage | undefined>`
+
+<Warning>
+Not implementing `getMessage` will prevent message retries and poll vote decryption.
+</Warning>
+
+### customUploadHosts
+
+Custom media upload servers.
+
+```typescript
+const sock = makeWASocket({
+    customUploadHosts: [
+        { hostname: 'upload.whatsapp.net', maxContentLengthBytes: 16_000_000 }
+    ]
+})
+```
+
+**Default:** `[]`  
+**Type:** `MediaConnInfo['hosts']`
+
+### generateHighQualityLinkPreview
+
+Generate high-quality link previews by uploading thumbnails.
+
+```typescript
+const sock = makeWASocket({
+    generateHighQualityLinkPreview: true
+})
+```
+
+**Default:** `false`  
+**Type:** `boolean`
+
+### linkPreviewImageThumbnailWidth
+
+Width for link preview thumbnails.
+
+```typescript
+const sock = makeWASocket({
+    linkPreviewImageThumbnailWidth: 192 // default
+})
+```
+
+**Default:** `192`  
+**Type:** `number` (pixels)
+
+## History & Sync Options
+
+### syncFullHistory
+
+Request full chat history from WhatsApp.
+
+```typescript
+const sock = makeWASocket({
+    syncFullHistory: true
+})
+```
+
+**Default:** `true`  
+**Type:** `boolean`
+
+<Note>
+Desktop browsers receive more history than mobile browsers when this is enabled.
+</Note>
+
+### shouldSyncHistoryMessage
+
+Control which history messages to process.
+
+```typescript
+import { proto } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    shouldSyncHistoryMessage: (msg) => {
+        // Skip FULL history sync, process others
+        return msg.syncType !== proto.HistorySync.HistorySyncType.FULL
+    }
+})
+```
+
+**Default:** Skips FULL sync  
+**Type:** `(msg: proto.Message.IHistorySyncNotification) => boolean`
+
+### fireInitQueries
+
+Automatically fire initialization queries on connection.
+
+```typescript
+const sock = makeWASocket({
+    fireInitQueries: true // default
+})
+```
+
+**Default:** `true`  
+**Type:** `boolean`
+
+## Behavior Options
+
+### markOnlineOnConnect
+
+Automatically mark as online when socket connects.
+
+```typescript
+const sock = makeWASocket({
+    markOnlineOnConnect: false // Stay offline
+})
+```
+
+**Default:** `true`  
+**Type:** `boolean`
+
+<Note>
+Set to `false` if you want to receive push notifications on your phone.
+</Note>
+
+### emitOwnEvents
+
+Emit events for actions performed by this socket.
+
+```typescript
+const sock = makeWASocket({
+    emitOwnEvents: true // default
+})
+```
+
+**Default:** `true`  
+**Type:** `boolean`
+
+### shouldIgnoreJid
+
+Ignore events from specific JIDs.
+
+```typescript
+import { isJidBroadcast } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    shouldIgnoreJid: (jid) => {
+        // Ignore all broadcast messages
+        return isJidBroadcast(jid)
+    }
+})
+```
+
+**Default:** `() => false`  
+**Type:** `(jid: string) => boolean | undefined`
+
+### patchMessageBeforeSending
+
+Modify messages before sending.
+
+```typescript
+const sock = makeWASocket({
+    patchMessageBeforeSending: (msg, recipientJids) => {
+        // Add watermark to all messages
+        if (msg.conversation) {
+            msg.conversation += '\n\nSent via MyBot'
+        }
+        return msg
+    }
+})
+```
+
+**Default:** `msg => msg` (no modification)  
+**Type:** Function that returns patched message(s)
+
+## Retry & Cache Options
+
+### retryRequestDelayMs
+
+Delay between retry attempts for failed messages.
+
+```typescript
+const sock = makeWASocket({
+    retryRequestDelayMs: 250 // default
+})
+```
+
+**Default:** `250` (milliseconds)  
+**Type:** `number`
+
+### maxMsgRetryCount
+
+Maximum number of retry attempts.
+
+```typescript
+const sock = makeWASocket({
+    maxMsgRetryCount: 5 // default
+})
+```
+
+**Default:** `5`  
+**Type:** `number`
+
+### msgRetryCounterCache
+
+Cache for tracking message retry counts.
+
+```typescript
+import NodeCache from '@cacheable/node-cache'
+import { CacheStore } from '@whiskeysockets/baileys'
+
+const msgRetryCounterCache = new NodeCache() as CacheStore
+
+const sock = makeWASocket({
+    msgRetryCounterCache
+})
+```
+
+**Default:** Not set  
+**Type:** `CacheStore`
+
+<Note>
+Keep this cache outside the socket to prevent retry loops across reconnections.
+</Note>
+
+### mediaCache
+
+Cache for media uploads to avoid re-uploading.
+
+```typescript
+import NodeCache from '@cacheable/node-cache'
+
+const mediaCache = new NodeCache({ stdTTL: 3600 })
+
+const sock = makeWASocket({
+    mediaCache
+})
+```
+
+**Default:** Not set  
+**Type:** `CacheStore`
+
+### userDevicesCache
+
+Cache for user device lists.
+
+```typescript
+import NodeCache from '@cacheable/node-cache'
+
+const userDevicesCache = new NodeCache({ stdTTL: 300 })
+
+const sock = makeWASocket({
+    userDevicesCache
+})
+```
+
+**Default:** Not set  
+**Type:** `PossiblyExtendedCacheStore`
+
+### callOfferCache
+
+Cache for call offers.
+
+```typescript
+import NodeCache from '@cacheable/node-cache'
+
+const callOfferCache = new NodeCache({ stdTTL: 300 })
+
+const sock = makeWASocket({
+    callOfferCache
+})
+```
+
+**Default:** Not set  
+**Type:** `CacheStore`
+
+### placeholderResendCache
+
+Cache for tracking placeholder resend requests.
+
+```typescript
+import NodeCache from '@cacheable/node-cache'
+
+const placeholderResendCache = new NodeCache()
+
+const sock = makeWASocket({
+    placeholderResendCache
+})
+```
+
+**Default:** Not set  
+**Type:** `CacheStore`
+
+## Performance Options
+
+### cachedGroupMetadata
+
+Cache group metadata to reduce API calls.
+
+```typescript
+import NodeCache from '@cacheable/node-cache'
+import { GroupMetadata } from '@whiskeysockets/baileys'
+
+const groupCache = new NodeCache({ stdTTL: 300 })
+
+const sock = makeWASocket({
+    cachedGroupMetadata: async (jid) => {
+        return groupCache.get(jid) as GroupMetadata | undefined
+    }
+})
+
+// Update cache when group metadata changes
+sock.ev.on('groups.update', async ([event]) => {
+    const metadata = await sock.groupMetadata(event.id)
+    groupCache.set(event.id, metadata)
+})
+
+sock.ev.on('group-participants.update', async (event) => {
+    const metadata = await sock.groupMetadata(event.id)
+    groupCache.set(event.id, metadata)
+})
+```
+
+**Default:** `async () => undefined`  
+**Type:** `(jid: string) => Promise<GroupMetadata | undefined>`
+
+<Note>
+Highly recommended for bots that interact with groups to reduce API load.
+</Note>
+
+### enableAutoSessionRecreation
+
+Automatically recreate sessions for failed messages.
+
+```typescript
+const sock = makeWASocket({
+    enableAutoSessionRecreation: true // default
+})
+```
+
+**Default:** `true`  
+**Type:** `boolean`
+
+### enableRecentMessageCache
+
+Cache recent messages for retry handling.
+
+```typescript
+const sock = makeWASocket({
+    enableRecentMessageCache: true // default
+})
+```
+
+**Default:** `true`  
+**Type:** `boolean`
+
+## Network Options
+
+### agent
+
+Proxy agent for WebSocket connection.
+
+```typescript
+import { Agent } from 'https'
+import { HttpsProxyAgent } from 'https-proxy-agent'
+
+const agent = new HttpsProxyAgent('http://proxy.example.com:8080')
+
+const sock = makeWASocket({
+    agent
+})
+```
+
+**Default:** Not set  
+**Type:** `Agent`
+
+### fetchAgent
+
+Agent for HTTP fetch requests (media upload/download).
+
+```typescript
+import { HttpsProxyAgent } from 'https-proxy-agent'
+
+const fetchAgent = new HttpsProxyAgent('http://proxy.example.com:8080')
+
+const sock = makeWASocket({
+    fetchAgent
+})
+```
+
+**Default:** Not set  
+**Type:** `Agent`
+
+### options
+
+Options for HTTP fetch requests.
+
+```typescript
+const sock = makeWASocket({
+    options: {
+        headers: {
+            'User-Agent': 'MyCustomUserAgent/1.0'
+        }
+    }
+})
+```
+
+**Default:** `{}`  
+**Type:** `RequestInit`
+
+## Advanced Options
+
+### countryCode
+
+Alphanumeric country code for the phone number.
+
+```typescript
+const sock = makeWASocket({
+    countryCode: 'BR' // Brazil
+})
+```
+
+**Default:** `'US'`  
+**Type:** `string`
+
+### logger
+
+Logger instance for debugging.
+
+```typescript
+import P from 'pino'
+
+const logger = P({ level: 'debug' })
+
+const sock = makeWASocket({
+    logger
+})
+```
+
+**Default:** Pino logger with level 'info'  
+**Type:** `ILogger`
+
+### transactionOpts
+
+Transaction options for Signal key store operations.
+
+```typescript
+const sock = makeWASocket({
+    transactionOpts: {
+        maxCommitRetries: 10,
+        delayBetweenTriesMs: 3000
+    }
+})
+```
+
+**Default:** `{ maxCommitRetries: 10, delayBetweenTriesMs: 3000 }`  
+**Type:** `TransactionCapabilityOptions`
+
+### appStateMacVerification
+
+Verify app state MACs for security.
+
+```typescript
+const sock = makeWASocket({
+    appStateMacVerification: {
+        patch: false,
+        snapshot: false
+    }
+})
+```
+
+**Default:** `{ patch: false, snapshot: false }`  
+**Type:** `{ patch: boolean; snapshot: boolean }`
+
+### makeSignalRepository
+
+Custom Signal protocol repository factory.
+
+```typescript
+import { makeLibSignalRepository } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    makeSignalRepository: makeLibSignalRepository // default
+})
+```
+
+**Default:** `makeLibSignalRepository`  
+**Type:** Function
+
+## Complete Configuration Example
+
+```typescript
+import makeWASocket, {
+    useMultiFileAuthState,
+    makeCacheableSignalKeyStore,
+    Browsers,
+    fetchLatestBaileysVersion,
+    CacheStore
+} from '@whiskeysockets/baileys'
+import NodeCache from '@cacheable/node-cache'
+import P from 'pino'
+
+const logger = P({ level: 'debug' })
+
+const { state, saveCreds } = await useMultiFileAuthState('auth_info')
+const { version } = await fetchLatestBaileysVersion()
+
+const msgRetryCounterCache = new NodeCache() as CacheStore
+const groupCache = new NodeCache({ stdTTL: 300 })
+
+const sock = makeWASocket({
+    // Authentication
+    auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    
+    // Connection
+    version,
+    browser: Browsers.macOS('Chrome'),
+    connectTimeoutMs: 20_000,
+    keepAliveIntervalMs: 30_000,
+    defaultQueryTimeoutMs: 60_000,
+    
+    // Behavior
+    markOnlineOnConnect: false,
+    syncFullHistory: true,
+    fireInitQueries: true,
+    emitOwnEvents: true,
+    
+    // Message handling
+    getMessage: async (key) => await getMessageFromDB(key),
+    
+    // Caching
+    msgRetryCounterCache,
+    cachedGroupMetadata: async (jid) => groupCache.get(jid),
+    
+    // Performance
+    enableAutoSessionRecreation: true,
+    enableRecentMessageCache: true,
+    
+    // Media
+    generateHighQualityLinkPreview: true,
+    linkPreviewImageThumbnailWidth: 192,
+    
+    // Retry
+    retryRequestDelayMs: 250,
+    maxMsgRetryCount: 5,
+    
+    // Logging
+    logger,
+})
+
+sock.ev.on('creds.update', saveCreds)
+
+// Update group cache
+sock.ev.on('groups.update', async ([event]) => {
+    const metadata = await sock.groupMetadata(event.id)
+    groupCache.set(event.id, metadata)
+})
+```
+
+## Configuration Best Practices
+
+<Steps>
+
+<Step title="Implement getMessage">
+Always implement `getMessage` for message retry and poll decryption support.
+</Step>
+
+<Step title="Use Latest Version">
+Fetch and use the latest WhatsApp Web version with `fetchLatestBaileysVersion()`.
+</Step>
+
+<Step title="Cache Group Metadata">
+Implement `cachedGroupMetadata` if your bot works with groups to reduce API calls.
+</Step>
+
+<Step title="External Retry Cache">
+Keep `msgRetryCounterCache` outside the socket to prevent retry loops on reconnection.
+</Step>
+
+<Step title="Adjust for Environment">
+Set `markOnlineOnConnect: false` if users should receive phone notifications.
+</Step>
+
+<Step title="Enable High Quality Previews">
+Set `generateHighQualityLinkPreview: true` for better link preview images.
+</Step>
+
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Session Management" icon="floppy-disk" href="/guides/session-management">
+    Implement getMessage and auth state
+  </Card>
+  <Card title="Handling Events" icon="bolt" href="/guides/handling-events">
+    Use socket to handle events
+  </Card>
+  <Card title="Sending Messages" icon="paper-plane" href="/messaging/sending-messages">
+    Send messages with your configured socket
+  </Card>
+</CardGroup>

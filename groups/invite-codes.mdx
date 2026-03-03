@@ -1,0 +1,515 @@
+---
+title: Invite Codes
+description: Generate, revoke, and use WhatsApp group invite codes and links
+---
+
+## Overview
+
+Baileys provides comprehensive methods for working with WhatsApp group invite codes. You can generate invite links, revoke them, join groups using codes, and get information about groups before joining.
+
+## Getting Invite Codes
+
+Retrieve the current invite code for a group.
+
+### Function Signature
+
+```typescript
+groupInviteCode(jid: string): Promise<string>
+```
+
+**Parameters:**
+- `jid` - The group JID
+
+**Returns:** The invite code as a string
+
+### Get Invite Code
+
+```typescript
+const code = await sock.groupInviteCode(jid)
+console.log('group code: ' + code)
+```
+
+<Note>
+  Only group admins can retrieve the invite code.
+</Note>
+
+### Creating an Invite Link
+
+To create a clickable WhatsApp invite link:
+
+```typescript
+const getInviteLink = async (groupJid: string) => {
+  const code = await sock.groupInviteCode(groupJid)
+  const link = 'https://chat.whatsapp.com/' + code
+  
+  console.log('Invite link:', link)
+  return link
+}
+```
+
+### Complete Example
+
+```typescript
+const generateAndShareInvite = async (groupJid: string) => {
+  try {
+    // Get the invite code
+    const code = await sock.groupInviteCode(groupJid)
+    
+    // Create full link
+    const inviteLink = `https://chat.whatsapp.com/${code}`
+    
+    console.log('Group invite link generated:', inviteLink)
+    
+    // Send the link to a user
+    await sock.sendMessage('1234@s.whatsapp.net', {
+      text: `Join our group: ${inviteLink}`
+    })
+    
+    return inviteLink
+  } catch (error) {
+    console.error('Failed to get invite code:', error)
+    throw error
+  }
+}
+```
+
+## Revoking Invite Codes
+
+Revoke the current invite code and generate a new one.
+
+### Function Signature
+
+```typescript
+groupRevokeInvite(jid: string): Promise<string>
+```
+
+**Parameters:**
+- `jid` - The group JID
+
+**Returns:** The new invite code
+
+### Revoke and Get New Code
+
+```typescript
+const code = await sock.groupRevokeInvite(jid)
+console.log('New group code: ' + code)
+```
+
+<Warning>
+  Revoking an invite code immediately invalidates all previously shared invite links. Users with old links won't be able to join.
+</Warning>
+
+### Safe Revoke Pattern
+
+```typescript
+const revokeGroupInvite = async (groupJid: string) => {
+  try {
+    const newCode = await sock.groupRevokeInvite(groupJid)
+    const newLink = `https://chat.whatsapp.com/${newCode}`
+    
+    console.log('Invite code revoked!')
+    console.log('New invite link:', newLink)
+    
+    // Notify admins of the new link
+    const metadata = await sock.groupMetadata(groupJid)
+    const admins = metadata.participants.filter(p => p.admin)
+    
+    for (const admin of admins) {
+      await sock.sendMessage(admin.id, {
+        text: `Group invite link has been reset. New link: ${newLink}`
+      })
+    }
+    
+    return newLink
+  } catch (error) {
+    console.error('Failed to revoke invite:', error)
+    throw error
+  }
+}
+```
+
+## Revoking V4 Invites
+
+Revoke a specific user's V4 invite.
+
+### Function Signature
+
+```typescript
+groupRevokeInviteV4(groupJid: string, invitedJid: string): Promise<boolean>
+```
+
+**Parameters:**
+- `groupJid` - The group JID
+- `invitedJid` - JID of the person whose invite you want to revoke
+
+**Returns:** `true` if successful
+
+### Revoke Specific User's Invite
+
+```typescript
+const success = await sock.groupRevokeInviteV4(groupJid, '1234@s.whatsapp.net')
+console.log('Invite revoked:', success)
+```
+
+## Joining Groups with Invite Codes
+
+Join a group using an invite code.
+
+### Function Signature
+
+```typescript
+groupAcceptInvite(code: string): Promise<string | undefined>
+```
+
+**Parameters:**
+- `code` - The invite code (without the URL prefix)
+
+**Returns:** The group JID you joined
+
+### Join Using Code
+
+```typescript
+const response = await sock.groupAcceptInvite(code)
+console.log('joined to: ' + response)
+```
+
+<Info>
+  The code parameter should be **only the code**, not the full URL. Extract it from `https://chat.whatsapp.com/CODE`
+</Info>
+
+### Join with Error Handling
+
+```typescript
+const joinGroupByCode = async (inviteCode: string) => {
+  try {
+    // Extract code if full URL was provided
+    const code = inviteCode.replace('https://chat.whatsapp.com/', '')
+    
+    // Join the group
+    const groupJid = await sock.groupAcceptInvite(code)
+    
+    console.log('Successfully joined group:', groupJid)
+    
+    // Send greeting message
+    await sock.sendMessage(groupJid, {
+      text: 'Hello everyone! 👋'
+    })
+    
+    return groupJid
+  } catch (error) {
+    console.error('Failed to join group:', error)
+    throw error
+  }
+}
+```
+
+## Joining with GroupInviteMessage (V4)
+
+Accept a group invite using a GroupInviteMessage.
+
+### Function Signature
+
+```typescript
+groupAcceptInviteV4(
+  key: string | WAMessageKey,
+  inviteMessage: proto.Message.IGroupInviteMessage
+): Promise<string>
+```
+
+**Parameters:**
+- `key` - The message key or sender JID
+- `inviteMessage` - The GroupInviteMessage object
+
+**Returns:** The group JID
+
+### Accept V4 Invite
+
+```typescript
+const response = await sock.groupAcceptInviteV4(jid, groupInviteMessage)
+console.log('joined to: ' + response)
+```
+
+### Handle GroupInviteMessage from Events
+
+```typescript
+sock.ev.on('messages.upsert', async ({ messages }) => {
+  for (const msg of messages) {
+    const inviteMessage = msg.message?.groupInviteMessage
+    
+    if (inviteMessage) {
+      console.log('Received group invite!')
+      console.log('Group:', inviteMessage.groupJid)
+      console.log('Invite expires:', new Date(Number(inviteMessage.inviteExpiration) * 1000))
+      
+      // Auto-accept the invite
+      try {
+        const groupJid = await sock.groupAcceptInviteV4(
+          msg.key,
+          inviteMessage
+        )
+        console.log('Joined group:', groupJid)
+      } catch (error) {
+        console.error('Failed to accept invite:', error)
+      }
+    }
+  }
+})
+```
+
+<Note>
+  When you accept a V4 invite, the library automatically expires the invite message in your chat.
+</Note>
+
+## Getting Group Info Before Joining
+
+Fetch group metadata using just the invite code, without joining.
+
+### Function Signature
+
+```typescript
+groupGetInviteInfo(code: string): Promise<GroupMetadata>
+```
+
+**Parameters:**
+- `code` - The invite code (without URL prefix)
+
+**Returns:** GroupMetadata object with group information
+
+### Get Group Information
+
+```typescript
+const response = await sock.groupGetInviteInfo(code)
+console.log('group information: ' + response)
+```
+
+### Preview Group Before Joining
+
+```typescript
+const previewGroup = async (inviteCode: string) => {
+  try {
+    // Extract code if full URL was provided
+    const code = inviteCode.replace('https://chat.whatsapp.com/', '')
+    
+    // Get group info without joining
+    const info = await sock.groupGetInviteInfo(code)
+    
+    console.log('Group Preview:')
+    console.log('Name:', info.subject)
+    console.log('Description:', info.desc)
+    console.log('Participants:', info.size)
+    console.log('Created:', new Date(info.creation! * 1000).toLocaleDateString())
+    
+    // Decide whether to join based on criteria
+    if (info.size && info.size > 100) {
+      console.log('Group is too large, not joining')
+      return null
+    }
+    
+    // Join if criteria met
+    const groupJid = await sock.groupAcceptInvite(code)
+    console.log('Joined group:', groupJid)
+    
+    return groupJid
+  } catch (error) {
+    console.error('Failed to preview/join group:', error)
+    throw error
+  }
+}
+```
+
+## Complete Invite Management System
+
+Comprehensive example combining all invite functionality:
+
+<Steps>
+  <Step title="Generate and share invite">
+    ```typescript
+    const shareGroupInvite = async (
+      groupJid: string,
+      recipientJid: string
+    ) => {
+      // Get current invite code
+      const code = await sock.groupInviteCode(groupJid)
+      const link = `https://chat.whatsapp.com/${code}`
+      
+      // Get group info
+      const metadata = await sock.groupMetadata(groupJid)
+      
+      // Send formatted invite
+      await sock.sendMessage(recipientJid, {
+        text: `You're invited to join "${metadata.subject}"!\n\n${link}\n\nGroup has ${metadata.participants.length} members.`
+      })
+      
+      console.log('Invite sent to', recipientJid)
+    }
+    ```
+  </Step>
+
+  <Step title="Manage invite security">
+    ```typescript
+    const manageInviteSecurity = async (groupJid: string) => {
+      // Revoke old invite
+      const newCode = await sock.groupRevokeInvite(groupJid)
+      console.log('Old invite revoked')
+      
+      // Enable join approval for extra security
+      await sock.groupJoinApprovalMode(groupJid, 'on')
+      console.log('Join approval enabled')
+      
+      // Get new link
+      const newLink = `https://chat.whatsapp.com/${newCode}`
+      console.log('New secure invite link:', newLink)
+      
+      return newLink
+    }
+    ```
+  </Step>
+
+  <Step title="Smart join with validation">
+    ```typescript
+    const smartJoinGroup = async (
+      inviteLink: string,
+      criteria?: {
+        maxSize?: number
+        requireDescription?: boolean
+      }
+    ) => {
+      // Extract code
+      const code = inviteLink.replace('https://chat.whatsapp.com/', '')
+      
+      // Preview group first
+      const info = await sock.groupGetInviteInfo(code)
+      
+      console.log('Evaluating group:', info.subject)
+      
+      // Apply criteria
+      if (criteria?.maxSize && info.size && info.size > criteria.maxSize) {
+        throw new Error(`Group too large (${info.size} members)`)
+      }
+      
+      if (criteria?.requireDescription && !info.desc) {
+        throw new Error('Group has no description')
+      }
+      
+      // All checks passed, join the group
+      const groupJid = await sock.groupAcceptInvite(code)
+      console.log('Successfully joined:', info.subject)
+      
+      return { groupJid, metadata: info }
+    }
+    
+    // Usage
+    await smartJoinGroup('https://chat.whatsapp.com/ABC123', {
+      maxSize: 100,
+      requireDescription: true
+    })
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+<Warning>
+  **Rate Limiting**: Don't revoke invite codes too frequently. WhatsApp may rate-limit this operation.
+</Warning>
+
+<Info>
+  **Preview Before Joining**: Always use `groupGetInviteInfo` to check group details before joining with `groupAcceptInvite`.
+</Info>
+
+<Note>
+  **Code Format**: When using invite codes, ensure you pass only the code portion, not the full URL.
+</Note>
+
+### Security Tips
+
+1. **Regular Rotation**: Periodically revoke and regenerate invite codes for sensitive groups
+2. **Approval Mode**: Enable join approval mode for additional security
+3. **Validate Before Joining**: Check group size and description before auto-joining
+4. **Track Invites**: Keep logs of when invite codes are generated and shared
+
+### Helper Functions
+
+```typescript
+// Extract code from various formats
+const extractInviteCode = (input: string): string => {
+  return input
+    .replace('https://chat.whatsapp.com/', '')
+    .replace('http://chat.whatsapp.com/', '')
+    .replace('chat.whatsapp.com/', '')
+    .trim()
+}
+
+// Validate invite code format
+const isValidInviteCode = (code: string): boolean => {
+  // WhatsApp invite codes are typically 22 characters
+  return /^[A-Za-z0-9]{20,24}$/.test(code)
+}
+
+// Safe invite code getter
+const getInviteCodeSafely = async (groupJid: string) => {
+  try {
+    const code = await sock.groupInviteCode(groupJid)
+    return { success: true, code }
+  } catch (error) {
+    console.error('Not authorized to get invite code')
+    return { success: false, code: null }
+  }
+}
+```
+
+## Common Use Cases
+
+### Automated Invite Distribution
+
+```typescript
+const distributeInvite = async (
+  groupJid: string,
+  recipients: string[]
+) => {
+  const code = await sock.groupInviteCode(groupJid)
+  const link = `https://chat.whatsapp.com/${code}`
+  const metadata = await sock.groupMetadata(groupJid)
+  
+  for (const recipient of recipients) {
+    await sock.sendMessage(recipient, {
+      text: `Join "${metadata.subject}": ${link}`
+    })
+    
+    // Rate limit
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+  
+  console.log(`Invite sent to ${recipients.length} people`)
+}
+```
+
+### Temporary Invite Links
+
+```typescript
+const createTemporaryInvite = async (
+  groupJid: string,
+  durationMinutes: number
+) => {
+  const code = await sock.groupInviteCode(groupJid)
+  const link = `https://chat.whatsapp.com/${code}`
+  
+  console.log('Temporary invite created:', link)
+  console.log(`Valid for ${durationMinutes} minutes`)
+  
+  // Auto-revoke after duration
+  setTimeout(async () => {
+    await sock.groupRevokeInvite(groupJid)
+    console.log('Temporary invite revoked')
+  }, durationMinutes * 60 * 1000)
+  
+  return link
+}
+```
+
+## Related Methods
+
+- [Creating Groups](/groups/creating-groups) - Create new groups
+- [Managing Participants](/groups/managing-participants) - Handle join requests
+- [Group Settings](/groups/group-settings) - Configure join approval mode
+- [Group Metadata](/groups/group-metadata) - View group information

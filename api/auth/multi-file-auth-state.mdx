@@ -1,0 +1,165 @@
+---
+title: useMultiFileAuthState
+description: Store authentication state across multiple files for efficient session management
+---
+
+The `useMultiFileAuthState` function provides a file-based implementation of authentication state storage. It's more efficient than single-file storage but recommended for development/bot use only.
+
+<Warning>
+  While more efficient than single-file storage, this is **not recommended for production** applications. Consider implementing authentication state storage with a proper SQL or NoSQL database for production use.
+</Warning>
+
+## Function Signature
+
+```typescript
+const useMultiFileAuthState = async (
+  folder: string
+): Promise<{ 
+  state: AuthenticationState; 
+  saveCreds: () => Promise<void> 
+}>
+```
+
+## Parameters
+
+<ParamField path="folder" type="string" required>
+  Path to the folder where authentication state files will be stored. The folder will be created if it doesn't exist.
+</ParamField>
+
+## Returns
+
+Returns a Promise that resolves to an object with:
+
+<ResponseField name="state" type="AuthenticationState" required>
+  The authentication state object containing credentials and keys
+  
+  <Expandable title="properties">
+    <ResponseField name="creds" type="AuthenticationCreds">
+      Authentication credentials loaded from `creds.json` or newly initialized
+    </ResponseField>
+    
+    <ResponseField name="keys" type="SignalKeyStore">
+      Key store implementation with file-based persistence
+      
+      <Expandable title="methods">
+        <ResponseField name="get" type="async function">
+          Retrieve keys by type and IDs from JSON files
+          
+          ```typescript
+          async (type: string, ids: string[]) => {
+            // Reads files like: pre-key-1.json, session-abc.json
+            // Returns: { [id]: value }
+          }
+          ```
+        </ResponseField>
+        
+        <ResponseField name="set" type="async function">
+          Store keys to JSON files, delete if value is null
+          
+          ```typescript
+          async (data: SignalDataSet) => {
+            // Writes/deletes files like: pre-key-1.json, session-abc.json
+          }
+          ```
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="saveCreds" type="() => Promise<void>" required>
+  Function to persist credentials to disk. Call this after credential updates to save changes.
+  
+  ```typescript
+  await saveCreds() // Writes to creds.json
+  ```
+</ResponseField>
+
+## Usage Example
+
+```typescript
+import { useMultiFileAuthState } from '@whiskeysockets/baileys'
+
+const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
+
+// Use the state when creating a socket connection
+const sock = makeWASocket({
+  auth: state,
+  // ... other options
+})
+
+// Listen for credential updates and save them
+sock.ev.on('creds.update', saveCreds)
+```
+
+## File Structure
+
+The function creates the following file structure:
+
+```
+auth_info/
+├── creds.json                    # Main credentials
+├── pre-key-1.json               # Individual pre-keys
+├── pre-key-2.json
+├── session-123456789.json        # Session data
+├── app-state-sync-key-xyz.json  # App state keys
+└── ...
+```
+
+## Key Features
+
+### File Locking
+
+The implementation uses per-file mutex locks to prevent race conditions when reading/writing files concurrently:
+
+```typescript
+const fileLocks = new Map<string, Mutex>()
+const getFileLock = (path: string): Mutex => {
+  let mutex = fileLocks.get(path)
+  if (!mutex) {
+    mutex = new Mutex()
+    fileLocks.set(path, mutex)
+  }
+  return mutex
+}
+```
+
+### File Name Sanitization
+
+Special characters in key IDs are sanitized for safe file system usage:
+- `/` → `__`
+- `:` → `-`
+
+### Automatic Initialization
+
+If `creds.json` doesn't exist, new credentials are automatically initialized using `initAuthCreds()`.
+
+### Special Handling for App State Keys
+
+App state sync keys are deserialized using protobuf:
+
+```typescript
+if (type === 'app-state-sync-key' && value) {
+  value = proto.Message.AppStateSyncKeyData.fromObject(value)
+}
+```
+
+## Error Handling
+
+<Warning>
+  The function will throw an error if a non-directory file exists at the specified folder path.
+</Warning>
+
+```typescript
+if (folderInfo && !folderInfo.isDirectory()) {
+  throw new Error(
+    `found something that is not a directory at ${folder}, ` +
+    `either delete it or specify a different location`
+  )
+}
+```
+
+## Related
+
+- [AuthenticationState](/api/auth/auth-state) - Authentication state types
+- [makeCacheableSignalKeyStore](/api/auth/cacheable-signal-keystore) - Add caching to key stores

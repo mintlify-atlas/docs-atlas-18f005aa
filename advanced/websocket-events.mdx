@@ -1,0 +1,439 @@
+---
+title: WebSocket Events
+description: Register callbacks for WebSocket events to intercept WhatsApp protocol messages
+---
+
+Baileys provides a powerful event system for intercepting and handling WebSocket frames before they're processed by the main event handlers.
+
+## Event Callback System
+
+The WebSocket client emits events using a special callback prefix system that allows pattern matching against binary node properties.
+
+### Callback Prefixes
+
+All WebSocket callback events use the prefix `CB:` followed by a pattern:
+
+```typescript
+import type { BinaryNode } from '@whiskeysockets/baileys'
+
+// Pattern: CB:{tag}
+sock.ws.on('CB:message', (node: BinaryNode) => {
+    console.log('Any message node received')
+})
+```
+
+From `src/Defaults/index.ts:14`:
+```typescript
+export const DEF_CALLBACK_PREFIX = 'CB:'
+export const DEF_TAG_PREFIX = 'TAG:'
+```
+
+## Event Pattern Matching
+
+The event system supports hierarchical pattern matching based on the binary node structure.
+
+### Basic Tag Matching
+
+Match any message with a specific tag:
+
+```typescript
+// Listen for all 'iq' nodes
+sock.ws.on('CB:iq', (node: BinaryNode) => {
+    console.log('IQ node:', node)
+})
+
+// Listen for all 'message' nodes
+sock.ws.on('CB:message', (node: BinaryNode) => {
+    console.log('Message node:', node)
+})
+
+// Listen for all 'presence' nodes
+sock.ws.on('CB:presence', (node: BinaryNode) => {
+    console.log('Presence update:', node)
+})
+```
+
+### Attribute Matching
+
+Match nodes with specific attribute values:
+
+```typescript
+// Pattern: CB:{tag},{attr}:{value}
+sock.ws.on('CB:iq,type:get', (node: BinaryNode) => {
+    console.log('IQ get request:', node)
+})
+
+sock.ws.on('CB:iq,type:set', (node: BinaryNode) => {
+    console.log('IQ set request:', node)
+})
+
+sock.ws.on('CB:iq,type:result', (node: BinaryNode) => {
+    console.log('IQ result:', node)
+})
+```
+
+### ID-Based Matching
+
+Match messages by their unique ID attribute:
+
+```typescript
+// Pattern: CB:{tag},id:{messageId}
+const msgId = 'abcd1234'
+sock.ws.on(`CB:iq,id:${msgId}`, (node: BinaryNode) => {
+    console.log('Specific message response:', node)
+})
+```
+
+### Content Tag Matching
+
+Match based on the first child node's tag:
+
+```typescript
+// Pattern: CB:{tag},,{contentTag}
+sock.ws.on('CB:ib,,edge_routing', (node: BinaryNode) => {
+    console.log('Edge routing message:', node)
+})
+
+sock.ws.on('CB:iq,,pair-success', (node: BinaryNode) => {
+    console.log('Pairing successful:', node)
+})
+
+sock.ws.on('CB:notification,,encrypt', (node: BinaryNode) => {
+    console.log('Encryption notification:', node)
+})
+```
+
+### Combined Matching
+
+Combine tag, attributes, and content matching:
+
+```typescript
+// Pattern: CB:{tag},{attr}:{value},{contentTag}
+sock.ws.on('CB:iq,type:set,pair-device', (node: BinaryNode) => {
+    console.log('Pair device request:', node)
+})
+
+sock.ws.on('CB:ib,from:@s.whatsapp.net,edge_routing', (node: BinaryNode) => {
+    console.log('Server edge routing:', node)
+})
+```
+
+## How Event Matching Works
+
+From `src/Socket/socket.ts:583-620`, the event matching logic:
+
+```typescript
+const onMessageReceived = async (data: Buffer) => {
+    await noise.decodeFrame(data, frame => {
+        // Binary node processing
+        if (!(frame instanceof Uint8Array)) {
+            const msgId = frame.attrs.id
+            
+            // Emit tag-specific event with ID
+            ws.emit(`TAG:${msgId}`, frame)
+            
+            // Extract matching components
+            const l0 = frame.tag
+            const l1 = frame.attrs || {}
+            const l2 = Array.isArray(frame.content) ? frame.content[0]?.tag : ''
+            
+            // Emit hierarchical callback events
+            for (const key of Object.keys(l1)) {
+                // CB:tag,attr:value,content
+                ws.emit(`CB:${l0},${key}:${l1[key]},${l2}`, frame)
+                // CB:tag,attr:value
+                ws.emit(`CB:${l0},${key}:${l1[key]}`, frame)
+                // CB:tag,attr
+                ws.emit(`CB:${l0},${key}`, frame)
+            }
+            
+            // CB:tag,,content
+            ws.emit(`CB:${l0},,${l2}`, frame)
+            // CB:tag
+            ws.emit(`CB:${l0}`, frame)
+        }
+    })
+}
+```
+
+## Common Event Patterns
+
+### Connection Events
+
+```typescript
+// Stream ended by server
+sock.ws.on('CB:xmlstreamend', () => {
+    console.log('Connection terminated by server')
+})
+
+// Stream errors
+sock.ws.on('CB:stream:error', (node: BinaryNode) => {
+    console.error('Stream error:', node)
+})
+
+// Connection success
+sock.ws.on('CB:success', (node: BinaryNode) => {
+    console.log('Login successful')
+})
+
+// Connection failure
+sock.ws.on('CB:failure', (node: BinaryNode) => {
+    console.error('Connection failed:', node.attrs)
+})
+```
+
+### Pairing & Authentication
+
+```typescript
+// QR code pairing
+sock.ws.on('CB:iq,type:set,pair-device', (node: BinaryNode) => {
+    console.log('QR code pairing initiated')
+})
+
+// Pairing success
+sock.ws.on('CB:iq,,pair-success', (node: BinaryNode) => {
+    console.log('Device paired successfully')
+})
+```
+
+### Message Synchronization
+
+```typescript
+// Offline message batch
+sock.ws.on('CB:ib,,offline_preview', (node: BinaryNode) => {
+    console.log('Offline preview received')
+})
+
+// All offline messages processed
+sock.ws.on('CB:ib,,offline', (node: BinaryNode) => {
+    const count = node.content?.[0]?.attrs?.count || 0
+    console.log(`Processed ${count} offline messages`)
+})
+```
+
+### Device & Session Management
+
+```typescript
+// Edge routing updates
+sock.ws.on('CB:ib,,edge_routing', (node: BinaryNode) => {
+    console.log('Edge routing info updated')
+})
+
+// Multi-device downgrade
+sock.ws.on('CB:ib,,downgrade_webclient', () => {
+    console.error('Multi-device beta not joined')
+})
+```
+
+## Tag-Based Events
+
+Besides callback events, you can listen for tag-based responses:
+
+```typescript
+// Wait for a specific message ID response
+const messageId = 'unique-msg-id'
+
+sock.ws.on(`TAG:${messageId}`, (response: BinaryNode) => {
+    console.log('Got response for message:', response)
+})
+
+// Send a message that expects a response
+await sock.sendNode({
+    tag: 'iq',
+    attrs: {
+        id: messageId,
+        type: 'get',
+        xmlns: 'w:profile:picture',
+        to: 'some-jid'
+    }
+})
+```
+
+<Info>
+Baileys internally uses `TAG:` events with the `waitForMessage()` function to implement query/response patterns.
+</Info>
+
+## Practical Examples
+
+### Battery Monitoring
+
+```typescript
+sock.ws.on('CB:notification', (node: BinaryNode) => {
+    if (Array.isArray(node.content)) {
+        const batteryNode = node.content.find(
+            n => typeof n === 'object' && n.tag === 'battery'
+        )
+        
+        if (batteryNode && typeof batteryNode === 'object') {
+            console.log('Battery level:', batteryNode.attrs?.value)
+            console.log('Charging:', batteryNode.attrs?.live === '1')
+        }
+    }
+})
+```
+
+### Presence Tracking
+
+```typescript
+sock.ws.on('CB:presence', (node: BinaryNode) => {
+    const from = node.attrs?.from
+    const type = node.attrs?.type
+    
+    if (type === 'available') {
+        console.log(`${from} is online`)
+    } else if (type === 'unavailable') {
+        console.log(`${from} is offline`)
+    } else if (type === 'composing') {
+        console.log(`${from} is typing`)
+    }
+})
+```
+
+### Group Metadata Changes
+
+```typescript
+sock.ws.on('CB:notification,type:group_update', (node: BinaryNode) => {
+    const groupJid = node.attrs?.from
+    
+    if (Array.isArray(node.content)) {
+        for (const child of node.content) {
+            if (typeof child === 'object') {
+                if (child.tag === 'subject') {
+                    console.log(`Group ${groupJid} name changed to:`, child.content)
+                } else if (child.tag === 'description') {
+                    console.log(`Group ${groupJid} description changed`)
+                }
+            }
+        }
+    }
+})
+```
+
+### Call Events
+
+```typescript
+sock.ws.on('CB:call', (node: BinaryNode) => {
+    const callId = node.attrs?.id
+    const from = node.attrs?.from
+    
+    console.log(`Incoming call from ${from}, ID: ${callId}`)
+    
+    // Auto-reject calls
+    await sock.rejectCall(callId, from)
+})
+```
+
+## Event Handler Best Practices
+
+<Warning>
+**Avoid Memory Leaks**: Always clean up event listeners when they're no longer needed.
+</Warning>
+
+```typescript
+// Good: Remove listener when done
+const handler = (node: BinaryNode) => {
+    console.log('Received:', node)
+    // Remove after first call if one-time
+    sock.ws.off('CB:iq', handler)
+}
+sock.ws.on('CB:iq', handler)
+
+// Or use once() if available
+sock.ws.once('CB:iq', (node: BinaryNode) => {
+    console.log('Received once:', node)
+})
+```
+
+<Note>
+**Error Handling**: Wrap callback logic in try-catch to prevent unhandled errors from crashing your application.
+</Note>
+
+```typescript
+sock.ws.on('CB:message', async (node: BinaryNode) => {
+    try {
+        await processMessage(node)
+    } catch (error) {
+        console.error('Error processing message:', error)
+    }
+})
+```
+
+## Debugging Event Matching
+
+To see which events are triggered, enable debug logging:
+
+```typescript
+import P from 'pino'
+
+const sock = makeWASocket({
+    logger: P({ level: 'debug' })
+})
+```
+
+Unhandled messages are logged:
+
+```json
+{
+    "unhandled": true,
+    "msgId": "some-id",
+    "fromMe": false,
+    "frame": { ... },
+    "msg": "communication recv"
+}
+```
+
+## Complete Example
+
+```typescript
+import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys'
+import type { BinaryNode } from '@whiskeysockets/baileys'
+import P from 'pino'
+
+async function start() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth')
+    
+    const sock = makeWASocket({
+        auth: state,
+        logger: P({ level: 'debug' }),
+        printQRInTerminal: true
+    })
+    
+    // Connection lifecycle
+    sock.ws.on('CB:success', (node: BinaryNode) => {
+        console.log('✓ Connected successfully')
+    })
+    
+    sock.ws.on('CB:failure', (node: BinaryNode) => {
+        console.error('✗ Connection failed:', node.attrs?.reason)
+    })
+    
+    sock.ws.on('CB:xmlstreamend', () => {
+        console.log('✗ Stream ended by server')
+    })
+    
+    // Message events
+    sock.ws.on('CB:message', (node: BinaryNode) => {
+        console.log('📨 Message received')
+    })
+    
+    // Presence tracking
+    sock.ws.on('CB:presence', (node: BinaryNode) => {
+        console.log('👤 Presence update:', node.attrs)
+    })
+    
+    // Offline messages
+    sock.ws.on('CB:ib,,offline', (node: BinaryNode) => {
+        console.log('📬 Offline messages synced')
+    })
+    
+    sock.ev.on('creds.update', saveCreds)
+}
+
+start()
+```
+
+## Next Steps
+
+- [Custom Functionality](/advanced/custom-functionality) - Writing custom message handlers
+- [Protocol Details](/advanced/protocol-details) - Understanding binary node structure
+- [Debugging](/advanced/debugging) - Troubleshooting event handlers

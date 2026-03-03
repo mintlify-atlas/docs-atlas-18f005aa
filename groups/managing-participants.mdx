@@ -1,0 +1,381 @@
+---
+title: Managing Participants
+description: Add, remove, promote, and demote participants in WhatsApp groups
+---
+
+## Overview
+
+Baileys provides comprehensive methods for managing group participants, including adding/removing members and changing admin roles. Only group admins can perform these operations.
+
+## Group Participants Update
+
+The main method for managing participants is `groupParticipantsUpdate`, which handles multiple actions.
+
+### Function Signature
+
+```typescript
+groupParticipantsUpdate(
+  jid: string,
+  participants: string[],
+  action: ParticipantAction
+): Promise<Array<{ status: string; jid: string; content: any }>>
+```
+
+**Parameters:**
+- `jid` - The group JID
+- `participants` - Array of participant JIDs to update
+- `action` - One of: `'add'`, `'remove'`, `'promote'`, `'demote'`, or `'modify'`
+
+**Returns:** Array of results showing the status for each participant
+
+## Adding Participants
+
+Add new members to an existing group.
+
+### Basic Example
+
+```typescript
+// Add participants to the group
+await sock.groupParticipantsUpdate(
+  'groupId@g.us',
+  ['abcd@s.whatsapp.net', 'efgh@s.whatsapp.net'],
+  'add'
+)
+```
+
+### Handling Results
+
+```typescript
+const results = await sock.groupParticipantsUpdate(
+  jid,
+  ['1234@s.whatsapp.net', '5678@s.whatsapp.net'],
+  'add'
+)
+
+// Check results for each participant
+results.forEach(result => {
+  if (result.status === '200') {
+    console.log(`Successfully added ${result.jid}`)
+  } else {
+    console.log(`Failed to add ${result.jid}: ${result.status}`)
+  }
+})
+```
+
+<Info>
+  **Success Status**: A status of `'200'` indicates successful operation. Other codes indicate errors.
+</Info>
+
+## Removing Participants
+
+Remove members from the group.
+
+```typescript
+// Remove participants from the group
+await sock.groupParticipantsUpdate(
+  jid,
+  ['abcd@s.whatsapp.net', 'efgh@s.whatsapp.net'],
+  'remove'
+)
+```
+
+<Warning>
+  **Admin Permissions Required**: You must be a group admin to remove participants. Attempting to remove participants without admin rights will result in an error.
+</Warning>
+
+### Safely Removing Participants
+
+```typescript
+const removeParticipants = async (
+  groupJid: string,
+  participantsToRemove: string[]
+) => {
+  try {
+    const results = await sock.groupParticipantsUpdate(
+      groupJid,
+      participantsToRemove,
+      'remove'
+    )
+
+    const successful = results.filter(r => r.status === '200')
+    const failed = results.filter(r => r.status !== '200')
+
+    console.log(`Removed ${successful.length} participants`)
+    if (failed.length > 0) {
+      console.log(`Failed to remove ${failed.length} participants`)
+    }
+
+    return { successful, failed }
+  } catch (error) {
+    console.error('Error removing participants:', error)
+    throw error
+  }
+}
+```
+
+## Promoting Participants
+
+Promote regular members to admin status.
+
+```typescript
+// Promote participants to admin
+await sock.groupParticipantsUpdate(
+  jid,
+  ['abcd@s.whatsapp.net', 'efgh@s.whatsapp.net'],
+  'promote'
+)
+```
+
+### Promote with Confirmation
+
+```typescript
+const promoteToAdmin = async (
+  groupJid: string,
+  participantJid: string
+) => {
+  try {
+    const results = await sock.groupParticipantsUpdate(
+      groupJid,
+      [participantJid],
+      'promote'
+    )
+
+    if (results[0].status === '200') {
+      console.log(`${participantJid} is now an admin`)
+      
+      // Send notification to the group
+      await sock.sendMessage(groupJid, {
+        text: `Congratulations! @${participantJid.split('@')[0]} is now an admin.`,
+        mentions: [participantJid]
+      })
+    }
+
+    return results[0]
+  } catch (error) {
+    console.error('Failed to promote participant:', error)
+    throw error
+  }
+}
+```
+
+## Demoting Participants
+
+Demote admins back to regular member status.
+
+```typescript
+// Demote participants from admin
+await sock.groupParticipantsUpdate(
+  jid,
+  ['abcd@s.whatsapp.net', 'efgh@s.whatsapp.net'],
+  'demote'
+)
+```
+
+<Note>
+  **Super Admin**: The group creator (super admin) cannot be demoted. Attempting to demote the creator will fail.
+</Note>
+
+## Managing Join Requests
+
+For groups with join approval mode enabled, you can approve or reject join requests.
+
+### Get Join Request List
+
+```typescript
+const requests = await sock.groupRequestParticipantsList(jid)
+console.log(requests) // Array of pending requests with attrs
+```
+
+### Approve/Reject Join Requests
+
+#### Function Signature
+
+```typescript
+groupRequestParticipantsUpdate(
+  jid: string,
+  participants: string[],
+  action: 'approve' | 'reject'
+): Promise<Array<{ status: string; jid: string }>>
+```
+
+#### Approve Requests
+
+```typescript
+const response = await sock.groupRequestParticipantsUpdate(
+  jid,
+  ['abcd@s.whatsapp.net', 'efgh@s.whatsapp.net'],
+  'approve'
+)
+console.log(response)
+```
+
+#### Reject Requests
+
+```typescript
+const response = await sock.groupRequestParticipantsUpdate(
+  jid,
+  ['abcd@s.whatsapp.net', 'efgh@s.whatsapp.net'],
+  'reject'
+)
+console.log(response)
+```
+
+### Complete Join Request Handler
+
+```typescript
+const handleJoinRequests = async (groupJid: string) => {
+  // Get all pending requests
+  const requests = await sock.groupRequestParticipantsList(groupJid)
+
+  if (requests.length === 0) {
+    console.log('No pending requests')
+    return
+  }
+
+  console.log(`Found ${requests.length} pending requests`)
+
+  // Example: Auto-approve all requests
+  const jidsToApprove = requests.map(req => req.jid)
+  
+  const results = await sock.groupRequestParticipantsUpdate(
+    groupJid,
+    jidsToApprove,
+    'approve'
+  )
+
+  // Check results
+  results.forEach(result => {
+    if (result.status === '200') {
+      console.log(`Approved ${result.jid}`)
+    } else {
+      console.log(`Failed to approve ${result.jid}: ${result.status}`)
+    }
+  })
+}
+```
+
+## Participant Structure
+
+Participants in group metadata have the following structure:
+
+```typescript
+interface GroupParticipant {
+  id: string                              // Participant JID
+  phoneNumber?: string                    // Phone number (for LID users)
+  lid?: string                            // LID identifier
+  admin: 'admin' | 'superadmin' | null   // Admin status
+  isAdmin?: boolean                       // Deprecated: check admin field
+  isSuperAdmin?: boolean                  // Deprecated: check if admin === 'superadmin'
+}
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Check admin status before operations">
+    Verify you have admin permissions before attempting to modify participants.
+    
+    ```typescript
+    const metadata = await sock.groupMetadata(groupJid)
+    const myJid = sock.user.id
+    const me = metadata.participants.find(p => p.id === myJid)
+    
+    if (!me?.admin) {
+      throw new Error('You must be an admin to perform this action')
+    }
+    ```
+  </Step>
+
+  <Step title="Handle errors gracefully">
+    Always check the status codes returned from participant updates.
+    
+    ```typescript
+    const results = await sock.groupParticipantsUpdate(jid, participants, 'add')
+    const failures = results.filter(r => r.status !== '200')
+    
+    if (failures.length > 0) {
+      // Handle failures appropriately
+    }
+    ```
+  </Step>
+
+  <Step title="Validate participant JIDs">
+    Ensure JIDs are properly formatted before operations.
+    
+    ```typescript
+    const formatJid = (phone: string) => {
+      return phone.includes('@') ? phone : `${phone}@s.whatsapp.net`
+    }
+    ```
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+### Batch Add with Error Handling
+
+```typescript
+const batchAddParticipants = async (
+  groupJid: string,
+  phoneNumbers: string[]
+) => {
+  // Format JIDs
+  const jids = phoneNumbers.map(num => `${num}@s.whatsapp.net`)
+
+  // Add in batches of 10 to avoid rate limits
+  const batchSize = 10
+  const results = []
+
+  for (let i = 0; i < jids.length; i += batchSize) {
+    const batch = jids.slice(i, i + batchSize)
+    const batchResults = await sock.groupParticipantsUpdate(
+      groupJid,
+      batch,
+      'add'
+    )
+    results.push(...batchResults)
+
+    // Wait between batches
+    if (i + batchSize < jids.length) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+  }
+
+  return results
+}
+```
+
+### Automatic Admin Assignment
+
+```typescript
+const assignAdmins = async (groupJid: string, adminJids: string[]) => {
+  // Get current group metadata
+  const metadata = await sock.groupMetadata(groupJid)
+
+  // Filter to only non-admin participants
+  const toPromote = adminJids.filter(jid => {
+    const participant = metadata.participants.find(p => p.id === jid)
+    return participant && !participant.admin
+  })
+
+  if (toPromote.length === 0) {
+    console.log('All specified participants are already admins')
+    return
+  }
+
+  // Promote them
+  const results = await sock.groupParticipantsUpdate(
+    groupJid,
+    toPromote,
+    'promote'
+  )
+
+  return results
+}
+```
+
+## Related Methods
+
+- [Group Metadata](/groups/group-metadata) - Fetch participant information
+- [Group Settings](/groups/group-settings) - Configure who can add members
+- [Invite Codes](/groups/invite-codes) - Alternative way to add members

@@ -1,0 +1,272 @@
+---
+title: 'Connecting with QR Code'
+description: 'Learn how to authenticate your Baileys connection using QR code scanning with customizable browser configurations'
+---
+
+## Overview
+
+QR code authentication is the primary method for connecting Baileys to WhatsApp. Your phone scans the QR code displayed by Baileys, establishing a multi-device connection.
+
+## Basic QR Code Connection
+
+The simplest way to connect with a QR code:
+
+```typescript
+import makeWASocket from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    printQRInTerminal: true
+})
+```
+
+<Note>
+When `printQRInTerminal` is set to `true`, the QR code will be displayed in your terminal for easy scanning.
+</Note>
+
+## Browser Configuration
+
+You can customize the browser identity that appears in your WhatsApp's "Linked Devices" section using the `browser` parameter.
+
+### Available Browser Configs
+
+Baileys provides predefined browser configurations:
+
+<CodeGroup>
+
+```typescript macOS
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    browser: Browsers.macOS('Chrome'),
+    printQRInTerminal: true
+})
+// Appears as: Mac OS (Chrome)
+```
+
+```typescript Ubuntu
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    browser: Browsers.ubuntu('My App'),
+    printQRInTerminal: true
+})
+// Appears as: Ubuntu (My App)
+```
+
+```typescript Windows
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    browser: Browsers.windows('Desktop'),
+    printQRInTerminal: true
+})
+// Appears as: Windows (Desktop)
+```
+
+```typescript Baileys
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    browser: Browsers.baileys('Bot'),
+    printQRInTerminal: true
+})
+// Appears as: Baileys (Bot)
+```
+
+```typescript Auto-detect
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    browser: Browsers.appropriate('MyApp'),
+    printQRInTerminal: true
+})
+// Uses your OS and release version automatically
+```
+
+</CodeGroup>
+
+### Browser Configuration Options
+
+| Browser | Platform | Version |
+|---------|----------|----------|
+| `Browsers.ubuntu()` | Ubuntu | 22.04.4 |
+| `Browsers.macOS()` | Mac OS | 14.4.1 |
+| `Browsers.windows()` | Windows | 10.0.22631 |
+| `Browsers.baileys()` | Baileys | 6.5.0 |
+| `Browsers.appropriate()` | Auto-detected | System release |
+
+## Custom Browser Configuration
+
+You can also provide a custom browser configuration:
+
+```typescript
+const sock = makeWASocket({
+    browser: ['My Custom OS', 'My App Name', '1.0.0'],
+    printQRInTerminal: true
+})
+```
+
+The browser parameter is a tuple: `[Platform, AppName, Version]`
+
+## Receiving Full Message History
+
+To receive complete message history when connecting, configure these options:
+
+```typescript
+import makeWASocket, { Browsers } from '@whiskeysockets/baileys'
+
+const sock = makeWASocket({
+    browser: Browsers.macOS('Desktop'),
+    syncFullHistory: true,
+    printQRInTerminal: true
+})
+```
+
+<Steps>
+
+<Step title="Set syncFullHistory">
+Enable `syncFullHistory: true` to request full chat history from WhatsApp.
+</Step>
+
+<Step title="Use Desktop Browser">
+Desktop browsers (macOS, Windows, Ubuntu) receive more message history than mobile browsers.
+</Step>
+
+<Step title="Handle History Events">
+History will be received via the `messaging-history.set` event after connection.
+</Step>
+
+</Steps>
+
+## Complete Connection Example
+
+Here's a complete example with QR code authentication and session persistence:
+
+```typescript
+import makeWASocket, { 
+    Browsers, 
+    DisconnectReason, 
+    useMultiFileAuthState 
+} from '@whiskeysockets/baileys'
+import { Boom } from '@hapi/boom'
+
+async function connectToWhatsApp() {
+    // Load saved session
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
+    
+    const sock = makeWASocket({
+        auth: state,
+        browser: Browsers.macOS('Chrome'),
+        printQRInTerminal: true,
+        syncFullHistory: true
+    })
+    
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update
+        
+        if (qr) {
+            console.log('QR Code updated, scan with your phone')
+        }
+        
+        if (connection === 'close') {
+            const shouldReconnect = 
+                (lastDisconnect?.error as Boom)?.output?.statusCode !== 
+                DisconnectReason.loggedOut
+            
+            console.log('Connection closed:', lastDisconnect?.error)
+            
+            if (shouldReconnect) {
+                connectToWhatsApp()
+            }
+        } else if (connection === 'open') {
+            console.log('Connected successfully!')
+        }
+    })
+    
+    // Save credentials when updated
+    sock.ev.on('creds.update', saveCreds)
+}
+
+connectToWhatsApp()
+```
+
+## QR Code Timeout
+
+You can configure how long to wait for QR code generation:
+
+```typescript
+const sock = makeWASocket({
+    qrTimeout: 60000, // 60 seconds (in milliseconds)
+    printQRInTerminal: true
+})
+```
+
+<Warning>
+QR codes expire after a short period. If the user doesn't scan in time, a new QR code will be generated automatically and emitted via the `connection.update` event.
+</Warning>
+
+## Connection Events
+
+Monitor the QR code and connection status:
+
+```typescript
+sock.ev.on('connection.update', (update) => {
+    const { connection, qr, lastDisconnect } = update
+    
+    if (qr) {
+        // New QR code available
+        console.log('Scan this QR code:', qr)
+    }
+    
+    if (connection === 'connecting') {
+        console.log('Establishing connection...')
+    }
+    
+    if (connection === 'open') {
+        console.log('Connection opened')
+    }
+    
+    if (connection === 'close') {
+        console.log('Connection closed')
+    }
+})
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Choose the Right Browser Config">
+Use desktop browser configs (`macOS`, `windows`, `ubuntu`) to receive more message history.
+</Step>
+
+<Step title="Save Authentication State">
+Always use `useMultiFileAuthState` to save sessions and avoid repeated QR scanning.
+</Step>
+
+<Step title="Handle Reconnections">
+Implement automatic reconnection logic for network failures (but not for logout).
+</Step>
+
+<Step title="Display QR Properly">
+If building a UI, extract the QR from the `connection.update` event rather than printing to terminal.
+</Step>
+
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Session Management" icon="floppy-disk" href="/guides/session-management">
+    Learn how to save and restore sessions
+  </Card>
+  <Card title="Pairing Code Method" icon="mobile" href="/guides/connecting-pairing-code">
+    Alternative authentication without QR codes
+  </Card>
+  <Card title="Handling Events" icon="bolt" href="/guides/handling-events">
+    Process messages and connection events
+  </Card>
+  <Card title="Socket Configuration" icon="gear" href="/guides/socket-configuration">
+    Advanced socket configuration options
+  </Card>
+</CardGroup>

@@ -1,0 +1,462 @@
+---
+title: Message Store
+description: Implementing data storage for messages, chats, and contacts in Baileys
+---
+
+## Overview
+
+Baileys does not include built-in persistent storage for messages, chats, or contacts. You must implement your own data store to persist WhatsApp data across sessions.
+
+<Warning>
+Storing an entire chat history in memory is inefficient and not recommended for production applications. Implement database-backed storage for real-world use cases.
+</Warning>
+
+## Why You Need a Store
+
+A message store is essential for:
+
+- **Message retries** - Retrying failed message sends
+- **Poll vote decryption** - Decrypting poll vote updates
+- **Message history** - Accessing previous messages
+- **Chat context** - Maintaining conversation state
+- **Quote messages** - Retrieving quoted messages
+
+## makeInMemoryStore (Reference Implementation)
+
+Baileys provides `makeInMemoryStore` as a reference implementation. While mentioned in the README, this is a simple in-memory store suitable for testing and small bots.
+
+### Basic Usage
+
+```typescript
+import makeWASocket, { makeInMemoryStore } from '@whiskeysockets/baileys'
+
+// Create in-memory store
+const store = makeInMemoryStore({})
+
+// Read from file (if exists)
+store.readFromFile('./baileys_store.json')
+
+// Save to file every 10 seconds
+setInterval(() => {
+  store.writeToFile('./baileys_store.json')
+}, 10_000)
+
+const sock = makeWASocket({})
+
+// Bind store to socket events
+store.bind(sock.ev)
+
+// Access stored data
+sock.ev.on('chats.upsert', () => {
+  console.log('All chats:', store.chats.all())
+})
+
+sock.ev.on('contacts.upsert', () => {
+  console.log('All contacts:', Object.values(store.contacts))
+})
+```
+
+### Store Features
+
+The in-memory store provides:
+
+- **`store.chats`** - KeyedDB instance of chats
+- **`store.contacts`** - Contact dictionary
+- **`store.messages`** - Message storage
+- **`store.bind(ev)`** - Bind to socket events
+- **`store.loadMessages(jid, count)`** - Load recent messages
+- **`store.writeToFile(path)`** - Persist to JSON file
+- **`store.readFromFile(path)`** - Load from JSON file
+
+## Implementing getMessage for Retries
+
+The socket config accepts a `getMessage` function for message retries and poll updates:
+
+```typescript
+const sock = makeWASocket({
+  getMessage: async (key) => await getMessageFromStore(key)
+})
+```
+
+### getMessage Implementation
+
+From `Example/example.ts:226`:
+
+```typescript
+import { WAMessageKey, WAMessageContent } from '@whiskeysockets/baileys'
+
+async function getMessage(
+  key: WAMessageKey
+): Promise<WAMessageContent | undefined> {
+  // Retrieve message from your store
+  // key.remoteJid - chat ID
+  // key.id - message ID
+  // key.fromMe - whether message was sent by you
+  
+  const message = await db.messages.findOne({
+    remoteJid: key.remoteJid,
+    id: key.id,
+    fromMe: key.fromMe
+  })
+  
+  return message?.message
+}
+```
+
+### Using getMessage for Poll Votes
+
+From `Example/example.ts:167`:
+
+```typescript
+sock.ev.on('messages.update', async (updates) => {
+  for (const { key, update } of updates) {
+    if (update.pollUpdates) {
+      // Get poll creation message from store
+      const pollCreation = await getMessage(key)
+      
+      if (pollCreation) {
+        const votes = getAggregateVotesInPollMessage({
+          message: pollCreation,
+          pollUpdates: update.pollUpdates
+        })
+        console.log('Poll votes:', votes)
+      }
+    }
+  }
+})
+```
+
+## Database Store Implementation
+
+### MongoDB Example
+
+```typescript
+import { MongoClient } from 'mongodb'
+
+class MongoStore {
+  private client: MongoClient
+  private db: any
+  
+  async connect() {
+    this.client = await MongoClient.connect('mongodb://localhost:27017')
+    this.db = this.client.db('whatsapp')
+  }
+  
+  async saveMessage(message: WAMessage) {
+    await this.db.collection('messages').insertOne({
+      remoteJid: message.key.remoteJid,
+      id: message.key.id,
+      fromMe: message.key.fromMe,
+      message: message.message,
+      messageTimestamp: message.messageTimestamp,
+      pushName: message.pushName,
+      createdAt: new Date()
+    })
+  }
+  
+  async getMessage(key: WAMessageKey): Promise<WAMessageContent | undefined> {
+    const doc = await this.db.collection('messages').findOne({
+      remoteJid: key.remoteJid,
+      id: key.id,
+      fromMe: key.fromMe
+    })
+    
+    return doc?.message
+  }
+  
+  async saveChat(chat: Chat) {
+    await this.db.collection('chats').updateOne(
+      { id: chat.id },
+      { $set: chat },
+      { upsert: true }
+    )
+  }
+  
+  async getChats() {
+    return await this.db.collection('chats').find({}).toArray()
+  }
+}
+
+// Usage
+const store = new MongoStore()
+await store.connect()
+
+const sock = makeWASocket({
+  getMessage: (key) => store.getMessage(key)
+})
+
+sock.ev.on('messages.upsert', ({ messages }) => {
+  for (const msg of messages) {
+    await store.saveMessage(msg)
+  }
+})
+
+sock.ev.on('chats.upsert', (chats) => {
+  for (const chat of chats) {
+    await store.saveChat(chat)
+  }
+})
+```
+
+### PostgreSQL Example
+
+```typescript
+import { Pool } from 'pg'
+
+class PostgresStore {
+  private pool: Pool
+  
+  constructor() {
+    this.pool = new Pool({
+      host: 'localhost',
+      database: 'whatsapp',
+      user: 'postgres',
+      password: 'password'
+    })
+  }
+  
+  async init() {
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        remote_jid TEXT NOT NULL,
+        id TEXT NOT NULL,
+        from_me BOOLEAN NOT NULL,
+        message JSONB NOT NULL,
+        message_timestamp BIGINT,
+        push_name TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (remote_jid, id, from_me)
+      )
+    `)
+    
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS chats (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        unread_count INTEGER,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `)
+  }
+  
+  async saveMessage(message: WAMessage) {
+    await this.pool.query(
+      `INSERT INTO messages 
+       (remote_jid, id, from_me, message, message_timestamp, push_name)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (remote_jid, id, from_me) DO UPDATE
+       SET message = EXCLUDED.message`,
+      [
+        message.key.remoteJid,
+        message.key.id,
+        message.key.fromMe,
+        JSON.stringify(message.message),
+        message.messageTimestamp,
+        message.pushName
+      ]
+    )
+  }
+  
+  async getMessage(key: WAMessageKey): Promise<WAMessageContent | undefined> {
+    const result = await this.pool.query(
+      `SELECT message FROM messages 
+       WHERE remote_jid = $1 AND id = $2 AND from_me = $3`,
+      [key.remoteJid, key.id, key.fromMe]
+    )
+    
+    return result.rows[0]?.message
+  }
+}
+```
+
+## Storing Events
+
+### Messages
+
+```typescript
+sock.ev.on('messages.upsert', async ({ messages, type }) => {
+  for (const message of messages) {
+    await store.saveMessage({
+      key: message.key,
+      message: message.message,
+      messageTimestamp: message.messageTimestamp,
+      pushName: message.pushName,
+      type: type // 'notify' or 'append'
+    })
+  }
+})
+```
+
+### Message Updates
+
+```typescript
+sock.ev.on('messages.update', async (updates) => {
+  for (const { key, update } of updates) {
+    await store.updateMessage(key, {
+      status: update.status,
+      reactions: update.reactions,
+      pollUpdates: update.pollUpdates
+    })
+  }
+})
+```
+
+### Chats
+
+```typescript
+sock.ev.on('chats.upsert', async (chats) => {
+  for (const chat of chats) {
+    await store.saveChat(chat)
+  }
+})
+
+sock.ev.on('chats.update', async (updates) => {
+  for (const update of updates) {
+    await store.updateChat(update.id!, update)
+  }
+})
+```
+
+### Contacts
+
+```typescript
+sock.ev.on('contacts.upsert', async (contacts) => {
+  for (const contact of contacts) {
+    await store.saveContact(contact)
+  }
+})
+
+sock.ev.on('contacts.update', async (updates) => {
+  for (const update of updates) {
+    await store.updateContact(update.id!, update)
+  }
+})
+```
+
+## Message Retrieval Helpers
+
+### Get Last Message in Chat
+
+```typescript
+async function getLastMessageInChat(jid: string): Promise<WAMessage | null> {
+  return await db.messages.findOne(
+    { remoteJid: jid },
+    { sort: { messageTimestamp: -1 } }
+  )
+}
+```
+
+### Load Message History
+
+```typescript
+async function loadMessages(
+  jid: string,
+  limit: number = 50,
+  before?: number
+): Promise<WAMessage[]> {
+  const query: any = { remoteJid: jid }
+  
+  if (before) {
+    query.messageTimestamp = { $lt: before }
+  }
+  
+  return await db.messages
+    .find(query)
+    .sort({ messageTimestamp: -1 })
+    .limit(limit)
+    .toArray()
+}
+```
+
+## Best Practices
+
+<Tip>
+**Store Implementation Tips:**
+
+1. **Index efficiently** - Index by `remoteJid`, `id`, and `fromMe` for fast lookups
+2. **Serialize properly** - Use `BufferJSON` for Buffer/Uint8Array fields
+3. **Handle updates** - Use upsert operations for idempotency
+4. **Batch operations** - Batch database writes for performance
+5. **Clean old data** - Implement retention policies for old messages
+6. **Backup regularly** - Regular backups prevent data loss
+7. **Handle errors** - Gracefully handle database errors
+</Tip>
+
+## Performance Optimization
+
+### Batch Writes
+
+```typescript
+const messageQueue: WAMessage[] = []
+const BATCH_SIZE = 100
+
+sock.ev.on('messages.upsert', ({ messages }) => {
+  messageQueue.push(...messages)
+  
+  if (messageQueue.length >= BATCH_SIZE) {
+    flushMessageQueue()
+  }
+})
+
+async function flushMessageQueue() {
+  if (messageQueue.length === 0) return
+  
+  const batch = messageQueue.splice(0, messageQueue.length)
+  await store.saveMessagesBatch(batch)
+}
+
+// Flush remaining messages periodically
+setInterval(flushMessageQueue, 5000)
+```
+
+### Caching
+
+```typescript
+import NodeCache from '@cacheable/node-cache'
+
+const messageCache = new NodeCache({ 
+  stdTTL: 300, // 5 minutes
+  maxKeys: 1000 
+})
+
+async function getMessage(key: WAMessageKey) {
+  const cacheKey = `${key.remoteJid}:${key.id}:${key.fromMe}`
+  
+  // Check cache first
+  let message = messageCache.get(cacheKey)
+  
+  if (!message) {
+    // Fetch from database
+    message = await db.getMessage(key)
+    
+    if (message) {
+      messageCache.set(cacheKey, message)
+    }
+  }
+  
+  return message
+}
+```
+
+## Data Retention
+
+```typescript
+// Delete messages older than 90 days
+async function cleanOldMessages() {
+  const cutoffDate = Date.now() - (90 * 24 * 60 * 60 * 1000)
+  
+  await db.messages.deleteMany({
+    messageTimestamp: { $lt: cutoffDate }
+  })
+}
+
+// Run cleanup daily
+setInterval(cleanOldMessages, 24 * 60 * 60 * 1000)
+```
+
+## See Also
+
+- [Events](/concepts/events) - Event system overview
+- [Authentication](/concepts/authentication) - Storing auth state
+- [WhatsApp IDs](/concepts/whatsapp-ids) - Understanding message keys

@@ -1,0 +1,411 @@
+---
+title: "Media Messages"
+description: "Send images, videos, audio, documents, and stickers with Baileys"
+---
+
+## Overview
+
+Baileys supports sending various media types efficiently. Media can be provided as a `Buffer`, `Stream`, or `URL`, and Baileys handles encryption and upload automatically.
+
+## Media Upload Types
+
+All media messages accept a `WAMediaUpload` type, which can be:
+
+```typescript
+type WAMediaUpload = 
+  | Buffer 
+  | { stream: Readable } 
+  | { url: URL | string }
+```
+
+<Note>
+Using `stream` or `url` is **recommended** to save memory, especially for large files. Baileys will encrypt the media as a stream without loading the entire file into memory.
+</Note>
+
+## Image Messages
+
+Send images with optional captions:
+
+<CodeGroup>
+```typescript Buffer
+import { readFileSync } from 'fs'
+
+await sock.sendMessage(
+  jid,
+  {
+    image: readFileSync('./image.jpg'),
+    caption: 'Hello World!'
+  }
+)
+```
+
+```typescript URL
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: './Media/image.png' },
+    caption: 'Hello World!'
+  }
+)
+```
+
+```typescript Remote URL
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: 'https://example.com/image.jpg' },
+    caption: 'Remote image'
+  }
+)
+```
+
+```typescript Stream
+import { createReadStream } from 'fs'
+
+await sock.sendMessage(
+  jid,
+  {
+    image: { stream: createReadStream('./image.jpg') },
+    caption: 'Streamed image'
+  }
+)
+```
+</CodeGroup>
+
+### Image with Mentions
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: './image.jpg' },
+    caption: 'Look at this @12345678901!',
+    mentions: ['12345678901@s.whatsapp.net']
+  }
+)
+```
+
+## Video Messages
+
+Send video files with captions:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    video: { url: './video.mp4' },
+    caption: 'Check out this video!'
+  }
+)
+```
+
+### Video Notes (PTV)
+
+Send as a video note (circular video):
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    video: { url: './video.mp4' },
+    ptv: true // Send as video note
+  }
+)
+```
+
+<Note>
+`ptv` stands for "picture-taking video" - WhatsApp's internal name for video notes.
+</Note>
+
+## GIF Messages
+
+<Warning>
+WhatsApp doesn't support actual `.gif` files. GIFs are sent as MP4 videos with the `gifPlayback` flag.
+</Warning>
+
+```typescript
+import { readFileSync } from 'fs'
+
+await sock.sendMessage(
+  jid,
+  {
+    video: readFileSync('./animation.mp4'),
+    caption: 'Animated content',
+    gifPlayback: true
+  }
+)
+```
+
+## Audio Messages
+
+Send audio files or voice notes:
+
+### Regular Audio
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    audio: { url: './audio.mp3' },
+    mimetype: 'audio/mp4'
+  }
+)
+```
+
+### Voice Notes (PTT)
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    audio: { url: './voice.ogg' },
+    mimetype: 'audio/ogg; codecs=opus',
+    ptt: true // Send as voice note
+  }
+)
+```
+
+<Note>
+`ptt` stands for "push to talk" - WhatsApp's internal name for voice notes.
+</Note>
+
+### Audio Requirements
+
+For audio to work across all devices, convert to OGG format with `ffmpeg`:
+
+```bash
+ffmpeg -i input.mp4 -avoid_negative_ts make_zero -ac 1 output.ogg
+```
+
+Required flags:
+- `codec: libopus` - OGG file format
+- `ac: 1` - Single audio channel
+- `avoid_negative_ts make_zero` - Timestamp handling
+
+### Audio with Duration
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    audio: { url: './audio.ogg' },
+    mimetype: 'audio/ogg; codecs=opus',
+    ptt: true,
+    seconds: 60 // Optional duration in seconds
+  }
+)
+```
+
+## Document Messages
+
+Send any file as a document:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    document: { url: './file.pdf' },
+    mimetype: 'application/pdf',
+    fileName: 'document.pdf',
+    caption: 'Here is the document'
+  }
+)
+```
+
+### Common MIME Types
+
+```typescript
+const mimeTypes = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  zip: 'application/zip',
+  txt: 'text/plain'
+}
+```
+
+## Sticker Messages
+
+Send stickers (WebP format):
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    sticker: { url: './sticker.webp' }
+  }
+)
+```
+
+### Animated Stickers
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    sticker: { url: './animated-sticker.webp' },
+    isAnimated: true
+  }
+)
+```
+
+## View Once Messages
+
+Send media that can only be viewed once:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: './secret.jpg' },
+    viewOnce: true,
+    caption: 'This can only be viewed once'
+  }
+)
+```
+
+<Note>
+`viewOnce` works with images, videos, and audio messages.
+</Note>
+
+## Thumbnails
+
+Baileys can automatically generate thumbnails for media messages.
+
+### Automatic Thumbnail Generation
+
+Install image processing libraries:
+
+```bash
+# For images and stickers
+yarn add sharp
+# or
+yarn add jimp
+
+# For video thumbnails (requires ffmpeg installed on system)
+# No additional packages needed
+```
+
+### Manual Thumbnail
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: './large-image.jpg' },
+    jpegThumbnail: thumbnailBuffer, // Buffer or base64 string
+    caption: 'Large image with custom thumbnail'
+  }
+)
+```
+
+## Media with Context
+
+Combine media with other message features:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: './photo.jpg' },
+    caption: 'Check this out @12345678901!',
+    mentions: ['12345678901@s.whatsapp.net']
+  },
+  {
+    quoted: originalMessage,
+    ephemeralExpiration: 86400 // 24 hours
+  }
+)
+```
+
+## Media Upload Process
+
+Understanding how media is uploaded:
+
+1. **Encryption**: Media is encrypted using AES-256-CBC
+2. **Upload**: Encrypted media is uploaded to WhatsApp servers
+3. **Message**: A message containing the media key and URL is sent
+4. **Decryption**: Recipient decrypts media using the media key
+
+```typescript
+// This all happens automatically
+const msg = await sock.sendMessage(jid, {
+  image: { url: './image.jpg' }
+})
+
+// The message contains:
+// - directPath: WhatsApp CDN path
+// - mediaKey: Encryption key
+// - fileEncSha256: Encrypted file hash
+// - fileSha256: Original file hash
+```
+
+## Media Configuration Options
+
+Configure media upload behavior in socket config:
+
+```typescript
+const sock = makeWASocket({
+  // Timeout for media uploads (default: 30 seconds)
+  mediaUploadTimeoutMs: 60000,
+  
+  // Cache media to avoid re-uploading
+  mediaCache: new NodeCache({
+    stdTTL: 3600 // 1 hour cache
+  })
+})
+```
+
+## Best Practices
+
+1. **Use Streams**: For large files, use streams to avoid memory issues
+2. **Set MIME Types**: Always specify correct MIME types for documents
+3. **Optimize Images**: Compress images before sending
+4. **Generate Thumbnails**: Install sharp/jimp for automatic thumbnails
+5. **Handle Errors**: Wrap uploads in try-catch blocks
+6. **Rate Limiting**: Don't send too many media messages rapidly
+
+## Media Message Types
+
+From the Baileys source code:
+
+```typescript
+type AnyMediaMessageContent = 
+  | { image: WAMediaUpload; caption?: string; jpegThumbnail?: string }
+  | { video: WAMediaUpload; caption?: string; gifPlayback?: boolean; ptv?: boolean }
+  | { audio: WAMediaUpload; ptt?: boolean; seconds?: number }
+  | { sticker: WAMediaUpload; isAnimated?: boolean }
+  | { document: WAMediaUpload; mimetype: string; fileName?: string; caption?: string }
+```
+
+## Troubleshooting
+
+### Upload Failures
+
+```typescript
+try {
+  await sock.sendMessage(jid, { image: { url: './image.jpg' } })
+} catch (error) {
+  if (error.message.includes('upload failed')) {
+    // Retry with exponential backoff
+  }
+}
+```
+
+### Large Files
+
+For files larger than 100MB, consider:
+- Breaking into smaller chunks
+- Using a more reliable network connection
+- Increasing `mediaUploadTimeoutMs`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Downloading Media" icon="download" href="/messaging/downloading-media">
+    Learn how to download media from received messages
+  </Card>
+  <Card title="Message Options" icon="sliders" href="/messaging/message-options">
+    Configure ephemeral and other message options
+  </Card>
+</CardGroup>

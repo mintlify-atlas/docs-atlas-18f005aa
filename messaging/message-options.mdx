@@ -1,0 +1,447 @@
+---
+title: "Message Options"
+description: "Configure message behavior with ephemeral messages, quotes, mentions, and more"
+---
+
+## Overview
+
+Message options control how messages are sent and displayed. These options are passed as the third parameter to `sendMessage`:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  { text: 'Hello' }, // Content
+  { /* options here */ } // Options
+)
+```
+
+## Quoted Messages
+
+Reply to a specific message:
+
+```typescript
+const originalMessage: WAMessage = /* from store or event */
+
+await sock.sendMessage(
+  jid,
+  { text: 'This is a reply' },
+  { quoted: originalMessage }
+)
+```
+
+<Note>
+Quoted messages work with all message types - text, media, locations, contacts, etc.
+</Note>
+
+### Quote Any Message Type
+
+```typescript
+// Quote and send media
+await sock.sendMessage(
+  jid,
+  { image: { url: './response.jpg' } },
+  { quoted: originalMessage }
+)
+
+// Quote and send location
+await sock.sendMessage(
+  jid,
+  { 
+    location: {
+      degreesLatitude: 24.121231,
+      degreesLongitude: 55.1121221
+    }
+  },
+  { quoted: originalMessage }
+)
+```
+
+## Ephemeral Messages
+
+Send disappearing messages that auto-delete after a specified time:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  { text: 'This will disappear' },
+  { ephemeralExpiration: 86400 } // 24 hours in seconds
+)
+```
+
+### Supported Durations
+
+| Duration | Seconds | Constant |
+|----------|---------|----------|
+| 24 hours | 86400 | - |
+| 7 days | 604800 | `WA_DEFAULT_EPHEMERAL` |
+| 90 days | 7776000 | - |
+
+```typescript
+import { WA_DEFAULT_EPHEMERAL } from '@whiskeysockets/baileys'
+
+// 7 day disappearing message (WhatsApp default)
+await sock.sendMessage(
+  jid,
+  { text: 'Disappears in 7 days' },
+  { ephemeralExpiration: WA_DEFAULT_EPHEMERAL }
+)
+```
+
+### Enable Disappearing Messages in Chat
+
+Turn on disappearing messages for all future messages in a chat:
+
+```typescript
+// Enable disappearing messages (7 days)
+await sock.sendMessage(
+  jid,
+  { disappearingMessagesInChat: WA_DEFAULT_EPHEMERAL }
+)
+
+// Send a message (will automatically be ephemeral)
+await sock.sendMessage(
+  jid, 
+  { text: 'This will disappear in 7 days' }
+)
+
+// Disable disappearing messages
+await sock.sendMessage(
+  jid,
+  { disappearingMessagesInChat: false }
+)
+```
+
+## Custom Message ID
+
+Override the auto-generated message ID:
+
+```typescript
+import { generateMessageIDV2 } from '@whiskeysockets/baileys'
+
+const customId = generateMessageIDV2(sock.user?.id)
+
+await sock.sendMessage(
+  jid,
+  { text: 'Message with custom ID' },
+  { messageId: customId }
+)
+```
+
+<Warning>
+Custom message IDs must follow WhatsApp's format. Use `generateMessageIDV2()` to ensure compatibility.
+</Warning>
+
+## Custom Timestamp
+
+Set a custom timestamp for the message:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  { text: 'Backdated message' },
+  { timestamp: new Date('2024-01-01') }
+)
+```
+
+<Note>
+WhatsApp may reject messages with timestamps too far in the past or future.
+</Note>
+
+## Broadcast Messages
+
+Send to multiple recipients or as a status:
+
+### Status/Story Broadcast
+
+```typescript
+await sock.sendMessage(
+  'status@broadcast',
+  {
+    image: { url: './story.jpg' },
+    caption: 'My status update'
+  },
+  {
+    backgroundColor: '#FF5733', // Background color for text status
+    font: 1, // Font style
+    statusJidList: [
+      '1111111111@s.whatsapp.net',
+      '2222222222@s.whatsapp.net'
+    ], // Who can see this status
+    broadcast: true
+  }
+)
+```
+
+### Message Options for Broadcasts
+
+```typescript
+type BroadcastOptions = {
+  // Background color for text status (hex or ARGB number)
+  backgroundColor?: string | number
+  
+  // Font type for status
+  font?: number
+  
+  // List of JIDs who should receive the broadcast
+  statusJidList?: string[]
+  
+  // Enable broadcast mode
+  broadcast?: boolean
+}
+```
+
+## Media Upload Options
+
+Control media upload behavior:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  { image: { url: './large-image.jpg' } },
+  {
+    // Timeout for media upload (milliseconds)
+    mediaUploadTimeoutMs: 60000 // 1 minute
+  }
+)
+```
+
+## Cached Group Metadata
+
+Control whether to use cached group metadata:
+
+```typescript
+await sock.sendMessage(
+  groupJid,
+  { text: 'Hello group' },
+  {
+    // Force fetch fresh group metadata
+    useCachedGroupMetadata: false
+  }
+)
+```
+
+<Note>
+By default, Baileys uses cached group metadata to improve performance. Set to `false` to always fetch fresh data.
+</Note>
+
+## All Message Options
+
+Here's the complete type definition from the source:
+
+```typescript
+type MiscMessageGenerationOptions = {
+  // Message ID override
+  messageId?: string
+  
+  // Custom timestamp
+  timestamp?: Date
+  
+  // Quote another message
+  quoted?: WAMessage
+  
+  // Ephemeral/disappearing message duration (seconds)
+  ephemeralExpiration?: number | string
+  
+  // Media upload timeout
+  mediaUploadTimeoutMs?: number
+  
+  // Status broadcast recipient list
+  statusJidList?: string[]
+  
+  // Background color for status
+  backgroundColor?: string
+  
+  // Font type for status
+  font?: number
+  
+  // Enable broadcast mode
+  broadcast?: boolean
+  
+  // Use cached group metadata
+  useCachedGroupMetadata?: boolean
+}
+```
+
+## Combining Options
+
+You can combine multiple options:
+
+```typescript
+import { generateMessageIDV2, WA_DEFAULT_EPHEMERAL } from '@whiskeysockets/baileys'
+
+const msg = await sock.sendMessage(
+  jid,
+  {
+    image: { url: './photo.jpg' },
+    caption: 'Check this out @12345678901!',
+    mentions: ['12345678901@s.whatsapp.net']
+  },
+  {
+    quoted: originalMessage,
+    ephemeralExpiration: WA_DEFAULT_EPHEMERAL,
+    messageId: generateMessageIDV2(sock.user?.id),
+    mediaUploadTimeoutMs: 60000
+  }
+)
+```
+
+## Message Context Info
+
+Add context info directly in the message content:
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    text: 'Message with context',
+    contextInfo: {
+      // Quoted message info (alternative to using 'quoted' option)
+      stanzaId: quotedMessage.key.id,
+      participant: quotedMessage.key.participant,
+      quotedMessage: quotedMessage.message,
+      
+      // Mentioned JIDs
+      mentionedJid: ['12345678901@s.whatsapp.net'],
+      
+      // Disappearing message expiration
+      expiration: 86400,
+      
+      // External ad reply (for links)
+      externalAdReply: {
+        title: 'Custom Title',
+        body: 'Custom Description',
+        thumbnailUrl: 'https://example.com/image.jpg',
+        sourceUrl: 'https://example.com'
+      }
+    }
+  }
+)
+```
+
+<Note>
+While you can set context info manually, using the `quoted` option and `mentions` array is recommended as Baileys handles the context info automatically.
+</Note>
+
+## Special Message Options
+
+### Forward Message
+
+```typescript
+const messageToForward: WAMessage = /* from store */
+
+await sock.sendMessage(
+  jid,
+  { 
+    forward: messageToForward,
+    force: true // Show as forwarded even if from you
+  }
+)
+```
+
+### View Once
+
+```typescript
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: './private.jpg' },
+    viewOnce: true
+  }
+)
+```
+
+<Note>
+`viewOnce` is part of the message content, not options.
+</Note>
+
+## Best Practices
+
+1. **Ephemeral Messages**: Use standard durations (24h, 7d, 90d) for compatibility
+2. **Message IDs**: Only use custom IDs when necessary; let Baileys generate them
+3. **Timestamps**: Avoid setting custom timestamps unless required
+4. **Media Timeouts**: Increase timeout for large files or slow connections
+5. **Group Metadata**: Use cached metadata for better performance
+6. **Broadcast Lists**: Ensure all JIDs in `statusJidList` are valid
+
+## Examples from Source
+
+<CodeGroup>
+```typescript Reply with Custom ID
+// From example.ts
+const id = generateMessageIDV2(sock.user?.id)
+await sock.sendMessage(
+  msg.key.remoteJid!,
+  { text: 'pong ' + msg.key.id },
+  { messageId: id }
+)
+```
+
+```typescript Ephemeral Message
+// From README.md
+await sock.sendMessage(
+  jid,
+  { text: 'hello' },
+  { ephemeralExpiration: WA_DEFAULT_EPHEMERAL }
+)
+```
+
+```typescript Status Broadcast
+// From README.md
+await sock.sendMessage(
+  jid,
+  {
+    image: { url: url },
+    caption: caption
+  },
+  {
+    backgroundColor: backgroundColor,
+    font: font,
+    statusJidList: statusJidList,
+    broadcast: true
+  }
+)
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### Quoted Message Not Showing
+
+Ensure the quoted message object is complete:
+
+```typescript
+// ✅ Correct
+const quotedMsg: WAMessage = {
+  key: { ... },
+  message: { ... },
+  messageTimestamp: ...
+}
+
+// ❌ Missing required fields
+const quotedMsg = { key: { id: '...' } }
+```
+
+### Ephemeral Not Working
+
+Check that:
+1. The duration is in seconds (not milliseconds)
+2. You're using a supported duration (24h, 7d, 90d)
+3. The chat supports ephemeral messages
+
+### Broadcast Not Delivering
+
+Verify:
+1. `broadcast: true` is set in options
+2. `statusJidList` contains valid JIDs
+3. JID format is correct (`@s.whatsapp.net`)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Modifying Messages" icon="pen-to-square" href="/messaging/modifying-messages">
+    Learn to edit and delete messages
+  </Card>
+  <Card title="Text Messages" icon="message" href="/messaging/text-messages">
+    Back to text message basics
+  </Card>
+</CardGroup>

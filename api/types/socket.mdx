@@ -1,0 +1,429 @@
+---
+title: Socket Configuration
+description: Socket configuration types and cache store interfaces
+---
+
+Configuration types for creating and managing WhatsApp socket connections.
+
+## SocketConfig
+
+Complete configuration object for `makeWASocket()`.
+
+### Connection Settings
+
+<ParamField path="waWebSocketUrl" type="string | URL" required>
+  The WebSocket URL to connect to WhatsApp servers
+  
+  Default: `'wss://web.whatsapp.com/ws/chat'`
+</ParamField>
+
+<ParamField path="connectTimeoutMs" type="number" required>
+  Connection timeout in milliseconds. Fails if socket doesn't connect within this time.
+  
+  Default: `20000` (20 seconds)
+</ParamField>
+
+<ParamField path="defaultQueryTimeoutMs" type="number | undefined" required>
+  Default timeout for queries in milliseconds. `undefined` for no timeout.
+  
+  Default: `60000` (60 seconds)
+</ParamField>
+
+<ParamField path="keepAliveIntervalMs" type="number" required>
+  Ping-pong interval for WebSocket connection in milliseconds
+  
+  Default: `25000` (25 seconds)
+</ParamField>
+
+<ParamField path="agent" type="Agent">
+  Proxy agent for WebSocket connection
+</ParamField>
+
+<ParamField path="fetchAgent" type="Agent">
+  Agent used for HTTP fetch requests (uploading/downloading media)
+</ParamField>
+
+### Client Identification
+
+<ParamField path="version" type="WAVersion" required>
+  WhatsApp Web version to connect with
+  
+  Type: `[number, number, number]`
+  
+  Example: `[2, 2323, 4]`
+</ParamField>
+
+<ParamField path="browser" type="WABrowserDescription" required>
+  Browser identification sent to WhatsApp
+  
+  Type: `[string, string, string]`
+  
+  Example: `['Baileys', 'Chrome', '1.0.0']`
+</ParamField>
+
+<ParamField path="countryCode" type="string" required>
+  Alphanumeric country code for the number (e.g., 'US', 'BR', 'IN')
+</ParamField>
+
+### Authentication
+
+<ParamField path="auth" type="AuthenticationState" required>
+  Authentication state object containing credentials and keys
+  
+  See [AuthenticationState](/api/auth/auth-state)
+</ParamField>
+
+<ParamField path="transactionOpts" type="TransactionCapabilityOptions" required>
+  Options for SignalKeyStore transaction capability
+  
+  <Expandable title="properties">
+    <ParamField path="maxCommitRetries" type="number" required>
+      Maximum number of retries for transaction commits
+    </ParamField>
+    
+    <ParamField path="delayBetweenTriesMs" type="number" required>
+      Delay between retry attempts in milliseconds
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Logging and Events
+
+<ParamField path="logger" type="ILogger" required>
+  Logger instance for debug output
+</ParamField>
+
+<ParamField path="emitOwnEvents" type="boolean" required>
+  Whether to emit events for actions done by this socket connection
+  
+  Default: `true`
+</ParamField>
+
+### History and Sync
+
+<ParamField path="syncFullHistory" type="boolean" required>
+  Whether to ask the phone for full history (received asynchronously)
+  
+  Default: `false`
+</ParamField>
+
+<ParamField path="shouldSyncHistoryMessage" type="function" required>
+  Control which history messages to sync
+  
+  ```typescript
+  (msg: proto.Message.IHistorySyncNotification) => boolean
+  ```
+  
+  Return `true` to sync, `false` to skip
+</ParamField>
+
+<ParamField path="fireInitQueries" type="boolean" required>
+  Whether to automatically fire initialization queries
+  
+  Default: `true`
+</ParamField>
+
+### Message Handling
+
+<ParamField path="getMessage" type="function" required>
+  Fetch a message from your store for retry logic
+  
+  ```typescript
+  (key: WAMessageKey) => Promise<proto.IMessage | undefined>
+  ```
+  
+  Required for handling "this message can take a while" issues
+</ParamField>
+
+<ParamField path="patchMessageBeforeSending" type="function" required>
+  Optionally modify messages before sending
+  
+  ```typescript
+  (msg: proto.IMessage, recipientJids?: string[]) =>
+    | Promise<PatchedMessageWithRecipientJID[] | PatchedMessageWithRecipientJID>
+    | PatchedMessageWithRecipientJID[] 
+    | PatchedMessageWithRecipientJID
+  ```
+</ParamField>
+
+<ParamField path="shouldIgnoreJid" type="function" required>
+  Determine if a JID should be ignored (no events, no decryption)
+  
+  ```typescript
+  (jid: string) => boolean | undefined
+  ```
+</ParamField>
+
+### Media
+
+<ParamField path="customUploadHosts" type="MediaConnInfo['hosts']" required>
+  Custom upload hosts for media
+</ParamField>
+
+<ParamField path="linkPreviewImageThumbnailWidth" type="number" required>
+  Width for link preview images in pixels
+  
+  Default: `192`
+</ParamField>
+
+<ParamField path="generateHighQualityLinkPreview" type="boolean" required>
+  Generate high quality link previews (uploads jpegThumbnail to WhatsApp)
+  
+  Default: `false`
+</ParamField>
+
+### Retry and Error Handling
+
+<ParamField path="retryRequestDelayMs" type="number" required>
+  Time to wait between sending retry requests in milliseconds
+  
+  Default: `250`
+</ParamField>
+
+<ParamField path="maxMsgRetryCount" type="number" required>
+  Maximum retry count for messages
+  
+  Default: `5`
+</ParamField>
+
+<ParamField path="qrTimeout" type="number">
+  Time to wait for QR code generation in milliseconds
+  
+  Default: `60000` (60 seconds)
+</ParamField>
+
+<ParamField path="enableAutoSessionRecreation" type="boolean" required>
+  Enable automatic session recreation for failed messages
+  
+  Default: `false`
+</ParamField>
+
+<ParamField path="enableRecentMessageCache" type="boolean" required>
+  Enable recent message caching for retry handling
+  
+  Default: `false`
+</ParamField>
+
+### Caching
+
+<ParamField path="mediaCache" type="CacheStore">
+  Cache to store media to avoid re-uploading
+  
+  See [CacheStore](#cachestore)
+</ParamField>
+
+<ParamField path="msgRetryCounterCache" type="CacheStore">
+  Cache to track retry counts for failed messages
+</ParamField>
+
+<ParamField path="userDevicesCache" type="PossiblyExtendedCacheStore">
+  Cache to store user device lists
+</ParamField>
+
+<ParamField path="callOfferCache" type="CacheStore">
+  Cache to store call offers
+</ParamField>
+
+<ParamField path="placeholderResendCache" type="CacheStore">
+  Cache to track placeholder resends
+</ParamField>
+
+<ParamField path="cachedGroupMetadata" type="function" required>
+  Fetch cached group metadata to speed up message sending
+  
+  ```typescript
+  (jid: string) => Promise<GroupMetadata | undefined>
+  ```
+</ParamField>
+
+### Advanced
+
+<ParamField path="markOnlineOnConnect" type="boolean" required>
+  Mark client as online when socket connects
+  
+  Default: `true`
+</ParamField>
+
+<ParamField path="appStateMacVerification" type="object" required>
+  Verify app state MACs
+  
+  ```typescript
+  {
+    patch: boolean
+    snapshot: boolean
+  }
+  ```
+</ParamField>
+
+<ParamField path="options" type="RequestInit" required>
+  Options for HTTP fetch requests
+</ParamField>
+
+<ParamField path="makeSignalRepository" type="function" required>
+  Factory function for creating signal repositories
+  
+  ```typescript
+  (
+    auth: SignalAuthState,
+    logger: ILogger,
+    pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>
+  ) => SignalRepositoryWithLIDStore
+  ```
+</ParamField>
+
+## CacheStore
+
+Interface for cache implementations used throughout Baileys.
+
+<ResponseField name="get" type="function" required>
+  Get a cached key
+  
+  ```typescript
+  get<T>(key: string): Promise<T> | T | undefined
+  ```
+</ResponseField>
+
+<ResponseField name="set" type="function" required>
+  Set a key in the cache
+  
+  ```typescript
+  set<T>(key: string, value: T): Promise<void> | void | number | boolean
+  ```
+</ResponseField>
+
+<ResponseField name="del" type="function" required>
+  Delete a key from the cache
+  
+  ```typescript
+  del(key: string): void | Promise<void> | number | boolean
+  ```
+</ResponseField>
+
+<ResponseField name="flushAll" type="function" required>
+  Flush all data from cache
+  
+  ```typescript
+  flushAll(): void | Promise<void>
+  ```
+</ResponseField>
+
+## PossiblyExtendedCacheStore
+
+Extended cache store with batch operations:
+
+<ResponseField name="mget" type="function">
+  Get multiple keys at once
+  
+  ```typescript
+  mget?<T>(keys: string[]): Promise<Record<string, T | undefined>>
+  ```
+</ResponseField>
+
+<ResponseField name="mset" type="function">
+  Set multiple keys at once
+  
+  ```typescript
+  mset?<T>(entries: { key: string; value: T }[]): 
+    Promise<void> | void | number | boolean
+  ```
+</ResponseField>
+
+<ResponseField name="mdel" type="function">
+  Delete multiple keys at once
+  
+  ```typescript
+  mdel?(keys: string[]): void | Promise<void> | number | boolean
+  ```
+</ResponseField>
+
+## Supporting Types
+
+### WAVersion
+
+```typescript
+type WAVersion = [number, number, number]
+
+// Example:
+const version: WAVersion = [2, 2323, 4]
+```
+
+### WABrowserDescription
+
+```typescript
+type WABrowserDescription = [string, string, string]
+
+// Example:
+const browser: WABrowserDescription = ['Baileys', 'Chrome', '1.0.0']
+```
+
+### PatchedMessageWithRecipientJID
+
+```typescript
+type PatchedMessageWithRecipientJID = proto.IMessage & {
+  recipientJid?: string
+}
+```
+
+## Example Configuration
+
+```typescript
+import makeWASocket, { 
+  DisconnectReason, 
+  useMultiFileAuthState,
+  makeCacheableSignalKeyStore 
+} from '@whiskeysockets/baileys'
+import NodeCache from 'node-cache'
+import pino from 'pino'
+
+const logger = pino({ level: 'debug' })
+const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
+
+// Create cache instances
+const msgRetryCounterCache = new NodeCache()
+const userDevicesCache = new NodeCache()
+
+const sock = makeWASocket({
+  version: [2, 2323, 4],
+  logger,
+  auth: {
+    creds: state.creds,
+    keys: makeCacheableSignalKeyStore(state.keys, logger)
+  },
+  browser: ['Baileys', 'Chrome', '1.0.0'],
+  
+  // Message handling
+  getMessage: async (key) => {
+    return await getMessageFromDB(key)
+  },
+  
+  // Caching
+  msgRetryCounterCache,
+  userDevicesCache,
+  
+  // Group metadata caching
+  cachedGroupMetadata: async (jid) => {
+    return await getGroupMetadataFromDB(jid)
+  },
+  
+  // Sync settings
+  syncFullHistory: true,
+  shouldSyncHistoryMessage: (msg) => {
+    // Only sync last 30 days
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000)
+    return msg.messageTimestamp > thirtyDaysAgo
+  },
+  
+  // Connection settings
+  connectTimeoutMs: 60000,
+  defaultQueryTimeoutMs: 60000,
+  keepAliveIntervalMs: 30000,
+  
+  // Advanced
+  emitOwnEvents: false,
+  markOnlineOnConnect: true,
+  generateHighQualityLinkPreview: true
+})
+
+// Save credentials on update
+sock.ev.on('creds.update', saveCreds)
+```
