@@ -281,19 +281,23 @@ const digestKeyBundle = async (): Promise<void> => {
 **Enable getMessage for retries**:
 
 ```typescript
-import { makeInMemoryStore } from '@whiskeysockets/baileys'
+// Store messages in a Map (or use a database)
+const messageStore = new Map()
 
-const store = makeInMemoryStore({})
-store.readFromFile('./baileys_store.json')
-
-const sock = makeWASocket({
-    getMessage: async (key) => {
-        const msg = await store.loadMessage(key.remoteJid!, key.id!)
-        return msg?.message || undefined
+sock.ev.on('messages.upsert', ({ messages }) => {
+    for (const msg of messages) {
+        const key = `${msg.key.remoteJid}_${msg.key.id}`
+        messageStore.set(key, msg)
     }
 })
 
-store.bind(sock.ev)
+const sock = makeWASocket({
+    getMessage: async (key) => {
+        const msgKey = `${key.remoteJid}_${key.id}`
+        const msg = messageStore.get(msgKey)
+        return msg?.message || undefined
+    }
+})
 ```
 
 **Why it's needed**: Baileys needs to retrieve messages for retry logic and poll vote decryption.
@@ -329,11 +333,11 @@ sock.ev.on('messages.update', async (updates) => {
 **Cause**: Storing entire chat history in memory
 
 ```typescript
-// Don't use in-memory store for production
-const store = makeInMemoryStore({})  // Stores everything in RAM!
+// Avoid storing all messages in memory
+const messages = new Map()  // Will grow unbounded!
 ```
 
-**Solution**: Implement custom storage backend (database):
+**Solution**: Implement database storage with TTL or size limits:
 
 ```typescript
 const sock = makeWASocket({

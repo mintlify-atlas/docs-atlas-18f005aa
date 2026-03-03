@@ -21,52 +21,63 @@ A message store is essential for:
 - **Chat context** - Maintaining conversation state
 - **Quote messages** - Retrieving quoted messages
 
-## makeInMemoryStore (Reference Implementation)
+## In-Memory Store (Custom Implementation)
 
-Baileys provides `makeInMemoryStore` as a reference implementation. While mentioned in the README, this is a simple in-memory store suitable for testing and small bots.
+<Warning>
+As of Baileys v7.0.0, the built-in `makeInMemoryStore` function has been removed. You must implement your own data store.
+</Warning>
 
-### Basic Usage
+While earlier versions of Baileys included a reference implementation, v7.0.0+ requires you to build a custom store tailored to your needs. This gives you more control and allows you to use databases that fit your scale requirements.
+
+### Basic In-Memory Store Example
+
+Here's a simple in-memory implementation for reference:
 
 ```typescript
-import makeWASocket, { makeInMemoryStore } from '@whiskeysockets/baileys'
+import makeWASocket from '@whiskeysockets/baileys'
 
-// Create in-memory store
-const store = makeInMemoryStore({})
+// Simple in-memory storage
+const store = {
+  chats: new Map(),
+  messages: new Map(),
+  contacts: new Map()
+}
 
-// Read from file (if exists)
-store.readFromFile('./baileys_store.json')
+const sock = makeWASocket({ auth: state })
 
-// Save to file every 10 seconds
-setInterval(() => {
-  store.writeToFile('./baileys_store.json')
-}, 10_000)
-
-const sock = makeWASocket({})
-
-// Bind store to socket events
-store.bind(sock.ev)
-
-// Access stored data
-sock.ev.on('chats.upsert', () => {
-  console.log('All chats:', store.chats.all())
+// Listen to events and store data
+sock.ev.on('chats.upsert', (chats) => {
+  for (const chat of chats) {
+    store.chats.set(chat.id, chat)
+  }
 })
 
-sock.ev.on('contacts.upsert', () => {
-  console.log('All contacts:', Object.values(store.contacts))
+sock.ev.on('messages.upsert', ({ messages }) => {
+  for (const msg of messages) {
+    const jid = msg.key.remoteJid
+    if (!store.messages.has(jid)) {
+      store.messages.set(jid, [])
+    }
+    store.messages.get(jid).push(msg)
+  }
+})
+
+sock.ev.on('contacts.upsert', (contacts) => {
+  for (const contact of contacts) {
+    store.contacts.set(contact.id, contact)
+  }
 })
 ```
 
-### Store Features
+### Recommended Store Features
 
-The in-memory store provides:
+Your custom store should provide:
 
-- **`store.chats`** - KeyedDB instance of chats
-- **`store.contacts`** - Contact dictionary
-- **`store.messages`** - Message storage
-- **`store.bind(ev)`** - Bind to socket events
-- **`store.loadMessages(jid, count)`** - Load recent messages
-- **`store.writeToFile(path)`** - Persist to JSON file
-- **`store.readFromFile(path)`** - Load from JSON file
+- **Chat storage** - Store chat metadata and state
+- **Message storage** - Indexed by JID for quick retrieval
+- **Contact storage** - User and group contact information
+- **Persistence** - Save to disk/database periodically
+- **Query methods** - Load messages by JID, pagination support
 
 ## Implementing getMessage for Retries
 

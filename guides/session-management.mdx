@@ -346,33 +346,50 @@ const sock = makeWASocket({
 
 ## In-Memory Store
 
-Baileys provides an optional in-memory store for quick prototyping:
+<Warning>
+As of Baileys v7.0.0, the built-in `makeInMemoryStore` has been removed. Implement a custom store instead.
+</Warning>
+
+Here's a simple in-memory store example for quick prototyping:
 
 ```typescript
-import makeWASocket, { makeInMemoryStore } from '@whiskeysockets/baileys'
+import makeWASocket from '@whiskeysockets/baileys'
+import { writeFile, readFile } from 'fs/promises'
 
-const store = makeInMemoryStore({})
+// Simple in-memory store
+const store = {
+    chats: new Map(),
+    contacts: new Map(),
+    messages: new Map()
+}
 
 // Load from file
-store.readFromFile('./baileys_store.json')
+try {
+    const data = await readFile('./baileys_store.json', 'utf-8')
+    const saved = JSON.parse(data)
+    store.chats = new Map(saved.chats || [])
+    store.contacts = new Map(saved.contacts || [])
+    store.messages = new Map(saved.messages || [])
+} catch {}
 
 // Auto-save every 10 seconds
-setInterval(() => {
-    store.writeToFile('./baileys_store.json')
+setInterval(async () => {
+    await writeFile('./baileys_store.json', JSON.stringify({
+        chats: Array.from(store.chats.entries()),
+        contacts: Array.from(store.contacts.entries()),
+        messages: Array.from(store.messages.entries())
+    }))
 }, 10_000)
 
 const sock = makeWASocket({ auth: state })
 
-// Bind store to socket
-store.bind(sock.ev)
-
-// Access data
-sock.ev.on('chats.upsert', () => {
-    console.log('Chats:', store.chats.all())
+// Store data from events
+sock.ev.on('chats.upsert', (chats) => {
+    for (const chat of chats) store.chats.set(chat.id, chat)
 })
 
-sock.ev.on('contacts.upsert', () => {
-    console.log('Contacts:', Object.values(store.contacts))
+sock.ev.on('contacts.upsert', (contacts) => {
+    for (const contact of contacts) store.contacts.set(contact.id, contact)
 })
 ```
 

@@ -146,7 +146,6 @@
     "makeWASocket",
     "useMultiFileAuthState",
     "makeCacheableSignalKeyStore",
-    "makeInMemoryStore",
     "downloadMediaMessage",
     "getContentType",
     "generateMessageIDV2",
