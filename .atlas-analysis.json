@@ -1,0 +1,165 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Baileys",
+  "projectDescription": "WebSocket-based TypeScript library for interacting with WhatsApp Web API",
+  "theme": "aspen",
+  "primaryColor": "#25D366",
+  "lightColor": "#128C7E",
+  "darkColor": "#075E54",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/authentication",
+              "concepts/connection",
+              "concepts/events",
+              "concepts/message-store",
+              "concepts/whatsapp-ids"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/connecting-qr-code",
+              "guides/connecting-pairing-code",
+              "guides/handling-events",
+              "guides/session-management",
+              "guides/socket-configuration"
+            ]
+          },
+          {
+            "group": "Messaging",
+            "pages": [
+              "messaging/sending-messages",
+              "messaging/text-messages",
+              "messaging/media-messages",
+              "messaging/message-options",
+              "messaging/modifying-messages",
+              "messaging/downloading-media"
+            ]
+          },
+          {
+            "group": "Groups",
+            "pages": [
+              "groups/creating-groups",
+              "groups/managing-participants",
+              "groups/group-settings",
+              "groups/group-metadata",
+              "groups/invite-codes"
+            ]
+          },
+          {
+            "group": "Chats & Contacts",
+            "pages": [
+              "chats/modifying-chats",
+              "chats/chat-state",
+              "chats/presence",
+              "chats/user-queries"
+            ]
+          },
+          {
+            "group": "Privacy & Security",
+            "pages": [
+              "privacy/privacy-settings",
+              "privacy/blocking-users",
+              "privacy/disappearing-messages"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/custom-functionality",
+              "advanced/websocket-events",
+              "advanced/protocol-details",
+              "advanced/debugging"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/makewasocket",
+              "api/socket-config",
+              "api/browsers"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth/auth-state",
+              "api/auth/multi-file-auth-state",
+              "api/auth/cacheable-signal-keystore"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types/messages",
+              "api/types/events",
+              "api/types/socket",
+              "api/types/contact",
+              "api/types/chat"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utils/message-utils",
+              "api/utils/media-utils",
+              "api/utils/chat-utils",
+              "api/utils/generic-utils"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "WebSocket-based WhatsApp Web API",
+    "Multi-device support with QR code and pairing code authentication",
+    "Comprehensive message handling (text, media, reactions, polls)",
+    "Full group management capabilities",
+    "Session persistence and state management",
+    "TypeScript support with complete type definitions",
+    "Event-driven architecture with typed events",
+    "Media upload/download with streaming support",
+    "Privacy settings and blocking functionality",
+    "Broadcasting and stories support"
+  ],
+  "publicApiSurface": [
+    "makeWASocket",
+    "useMultiFileAuthState",
+    "makeCacheableSignalKeyStore",
+    "makeInMemoryStore",
+    "downloadMediaMessage",
+    "getContentType",
+    "generateMessageIDV2",
+    "jidNormalizedUser",
+    "proto (WAProto types)",
+    "DisconnectReason",
+    "Browsers",
+    "BufferJSON",
+    "WAMessageStatus",
+    "WAPresence",
+    "encryptedStream",
+    "generateThumbnail",
+    "extractUrlFromText",
+    "getAggregateVotesInPollMessage"
+  ]
+}
